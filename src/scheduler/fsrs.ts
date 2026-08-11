@@ -141,9 +141,12 @@ export function fromAnkiScheduling(opts: {
   ivl: number
   reps: number
   lapses: number
+  /** Collection creation time (unix seconds) — used for review due days */
+  crt?: number
   now?: Date
 }): ReturnType<typeof applyFsrsDefaults> {
   const now = opts.now ?? new Date()
+  const nowMs = now.getTime()
   const base = applyFsrsDefaults({
     reps: opts.reps,
     lapses: opts.lapses,
@@ -151,35 +154,39 @@ export function fromAnkiScheduling(opts: {
 
   // Anki type: 0=new, 1=learning, 2=review, 3=relearning
   if (opts.type === 0 || opts.queue === 0) {
-    return { ...base, state: 'new', due: now.getTime() }
+    return { ...base, state: 'new', due: nowMs }
   }
 
   if (opts.type === 1 || opts.queue === 1 || opts.queue === 3) {
-    // learning / day-learn — due is often seconds timestamp or position
+    // learning: due is usually unix seconds; day-learn queue=3 may be day number
     const dueMs =
-      opts.due > 1_000_000_000 ? opts.due * 1000 : now.getTime()
+      opts.due > 1_000_000_000
+        ? opts.due * 1000
+        : opts.crt != null
+          ? (opts.crt + opts.due) * 86400000
+          : nowMs
     return {
       ...base,
-      state: opts.type === 3 ? 'relearning' : 'learning',
+      state: opts.type === 3 || opts.queue === 3 ? 'relearning' : 'learning',
       due: dueMs,
-      lastReview: now.getTime(),
+      lastReview: nowMs,
     }
   }
 
   // Review: due is days since collection creation; ivl is days
-  // Without collection crt we approximate: if due looks like day number, put due today or past
   const intervalDays = Math.max(1, opts.ivl || 1)
   const stability = Math.max(0.1, intervalDays)
-  // Prefer treating imported review cards as due now if overdue unknown
+  const dueMs =
+    opts.crt != null ? (opts.crt + opts.due) * 86400000 : nowMs
   return {
     ...base,
     state: 'review',
-    due: now.getTime(),
+    due: dueMs,
     stability,
     difficulty: 5,
     scheduledDays: intervalDays,
     reps: opts.reps,
     lapses: opts.lapses,
-    lastReview: now.getTime() - intervalDays * 86400000,
+    lastReview: dueMs - intervalDays * 86400000,
   }
 }

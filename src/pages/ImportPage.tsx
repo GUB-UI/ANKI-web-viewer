@@ -11,6 +11,7 @@ export function ImportPage() {
     null,
   )
   const [running, setRunning] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
 
   async function onFile(file: File | undefined) {
     if (!file) return
@@ -82,14 +83,36 @@ export function ImportPage() {
             hidden
             onChange={(e) => void onFile(e.target.files?.[0])}
           />
-          <button
-            type="button"
-            className="btn btn-primary btn-block"
-            disabled={running}
-            onClick={() => inputRef.current?.click()}
+          <div
+            className={`drop-zone ${dragOver ? 'over' : ''}`}
+            onDragEnter={(e) => {
+              e.preventDefault()
+              setDragOver(true)
+            }}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragOver(true)
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOver(false)
+              const file = e.dataTransfer.files?.[0]
+              void onFile(file)
+            }}
           >
-            .apkgを選択
-          </button>
+            <p className="muted" style={{ margin: '0 0 14px' }}>
+              ファイルをここにドロップ
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              disabled={running}
+              onClick={() => inputRef.current?.click()}
+            >
+              .apkgを選択
+            </button>
+          </div>
         </>
       )}
 

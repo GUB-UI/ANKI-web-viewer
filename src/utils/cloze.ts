@@ -1,22 +1,25 @@
-const CLOZE_RE = /\{\{c(\d+)::([^}:]+?)(?:::[^}]+)?\}\}/g
+function clozeRe(): RegExp {
+  // Fresh instance each call — shared /g RegExp lastIndex bugs otherwise
+  return /\{\{c(\d+)::([^}:]+?)(?:::[^}]+)?\}\}/g
+}
 
 export function extractClozeIndices(text: string): number[] {
   const indices = new Set<number>()
-  for (const match of text.matchAll(CLOZE_RE)) {
+  for (const match of text.matchAll(clozeRe())) {
     indices.add(Number(match[1]))
   }
   return [...indices].sort((a, b) => a - b)
 }
 
 export function renderClozeFront(text: string, clozeIndex: number): string {
-  return text.replace(CLOZE_RE, (_full, index: string, answer: string) => {
+  return text.replace(clozeRe(), (_full, index: string, answer: string) => {
     if (Number(index) === clozeIndex) return '[...]'
     return answer
   })
 }
 
 export function renderClozeBack(text: string, clozeIndex: number): string {
-  return text.replace(CLOZE_RE, (_full, index: string, answer: string) => {
+  return text.replace(clozeRe(), (_full, index: string, answer: string) => {
     if (Number(index) === clozeIndex) {
       return `<span class="cloze-answer">${escapeHtml(answer)}</span>`
     }

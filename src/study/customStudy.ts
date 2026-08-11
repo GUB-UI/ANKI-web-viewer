@@ -7,10 +7,22 @@ import { collectDescendantIds } from './deckTree'
 export async function setDailyNewOverride(
   deckId: string,
   newCardsLimit: number,
+  /** When true (default), also apply to all descendant decks */
+  includeDescendants = true,
 ): Promise<void> {
   const date = todayKey()
-  const id = `${date}_${deckId}`
-  await db.dailyOverrides.put({ id, date, deckId, newCardsLimit })
+  const decks = await db.decks.toArray()
+  const ids = includeDescendants
+    ? collectDescendantIds(deckId, decks)
+    : [deckId]
+  await db.dailyOverrides.bulkPut(
+    ids.map((id) => ({
+      id: `${date}_${id}`,
+      date,
+      deckId: id,
+      newCardsLimit,
+    })),
+  )
 }
 
 export async function getDailyNewOverride(

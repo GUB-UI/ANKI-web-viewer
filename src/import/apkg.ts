@@ -200,6 +200,8 @@ export async function importApkg(
 
     const notes: Note[] = []
     const noteIdMap = new Map<string, string>()
+    const noteById = new Map<string, Note>()
+    const noteMidByOurs = new Map<string, string>()
 
     for (const row of noteRows) {
       const mid = String(row.mid)
@@ -220,7 +222,8 @@ export async function importApkg(
         : { noteType: 'Unknown' }
       const id = createId('note')
       noteIdMap.set(String(row.id), id)
-      notes.push({
+      noteMidByOurs.set(id, mid)
+      const note: Note = {
         id,
         fields,
         tags: String(row.tags ?? '')
@@ -229,20 +232,21 @@ export async function importApkg(
           .filter(Boolean),
         noteType,
         fieldOrder: Object.keys(fields),
-      })
+      }
+      notes.push(note)
+      noteById.set(id, note)
     }
 
     const cards: Card[] = []
     const ankiCardIdMap = new Map<string, string>()
+    const cardsPerDeck = new Map<string, number>()
 
     for (let i = 0; i < cardRows.length; i++) {
       const row = cardRows[i]!
       const noteOurs = noteIdMap.get(String(row.nid))
       if (!noteOurs) continue
-      const note = notes.find((n) => n.id === noteOurs)!
-      const model = models.get(
-        String(noteRows.find((n) => noteIdMap.get(String(n.id)) === noteOurs)?.mid),
-      )
+      const note = noteById.get(noteOurs)!
+      const model = models.get(noteMidByOurs.get(noteOurs) ?? '')
       const { cardType } = model
         ? detectNoteType(model)
         : { cardType: 'other' as const }
@@ -257,6 +261,7 @@ export async function importApkg(
         ivl: Number(row.ivl ?? 0),
         reps: Number(row.reps ?? 0),
         lapses: Number(row.lapses ?? 0),
+        crt: Number(col.crt ?? 0) || undefined,
       })
 
       let clozeIndex: number | undefined
@@ -290,6 +295,7 @@ export async function importApkg(
         back,
         ...applyFsrsDefaults(scheduling),
       })
+      cardsPerDeck.set(deckOurs, (cardsPerDeck.get(deckOurs) ?? 0) + 1)
 
       if (i % 200 === 0 || i === cardRows.length - 1) {
         report({
@@ -375,6 +381,22 @@ export async function importApkg(
       }
     }
 
+    // Keep empty leaf decks only if they sit on a path that has cards
+    const keepDeckIds = new Set<string>()
+    for (const deck of decks) {
+      if ((cardsPerDeck.get(deck.id) ?? 0) > 0) {
+        let cur: Deck | undefined = deck
+        while (cur) {
+          keepDeckIds.add(cur.id)
+          cur = cur.parentId
+            ? decks.find((d) => d.id === cur!.parentId)
+            : undefined
+        }
+      }
+    }
+    // Always keep hierarchy nodes that have kept descendants (already added)
+    const decksToSave = decks.filter((d) => keepDeckIds.has(d.id))
+
     // Persist — merge decks by path if already exist
     await db.transaction(
       'rw',
@@ -384,7 +406,7 @@ export async function importApkg(
         const pathToExisting = new Map(existingDecks.map((d) => [d.path, d.id]))
         const deckIdRemap = new Map<string, string>()
 
-        for (const deck of decks) {
+        for (const deck of decksToSave) {
           const existingId = pathToExisting.get(deck.path)
           if (existingId) {
             deckIdRemap.set(deck.id, existingId)
@@ -392,7 +414,7 @@ export async function importApkg(
             // remap parent too
             if (deck.parentId && deckIdRemap.has(deck.parentId)) {
               deck.parentId = deckIdRemap.get(deck.parentId)
-            } else if (deck.parentId && pathToExisting.size) {
+            } else if (deck.parentId) {
               const parentDeck = decks.find((d) => d.id === deck.parentId)
               if (parentDeck && pathToExisting.has(parentDeck.path)) {
                 deck.parentId = pathToExisting.get(parentDeck.path)
@@ -440,7 +462,7 @@ export async function importApkg(
 
     return {
       cards: cards.length,
-      decks: decks.length,
+      decks: decksToSave.length,
       media: mediaRows.length,
       notes: notes.length,
     }

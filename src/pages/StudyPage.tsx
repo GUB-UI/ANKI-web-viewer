@@ -8,6 +8,9 @@ import { renderCardContent } from '../utils/cardRender'
 import { buildStudyQueue } from '../study/queue'
 import { answerCard } from '../study/review'
 
+/** Re-queue learning cards due within this window in the same session */
+const LEARNING_REQUEUE_MS = 25 * 60 * 1000
+
 export function StudyPage({ source = 'normal' as ReviewSource }) {
   const { deckId = '' } = useParams()
   const [queue, setQueue] = useState<Card[]>([])
@@ -18,6 +21,7 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
   const [loading, setLoading] = useState(true)
   const [swipeEnabled, setSwipeEnabled] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [answered, setAnswered] = useState(0)
 
   const card = queue[index]
 
@@ -30,13 +34,13 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
       setSwipeEnabled(settings.swipeEnabled)
 
       if (source === 'custom') {
-        // queue injected via sessionStorage by CustomStudyPage
         const raw = sessionStorage.getItem(`customQueue:${deckId}`)
         const ids: string[] = raw ? (JSON.parse(raw) as string[]) : []
         const cards = (await db.cards.bulkGet(ids)).filter((c): c is Card => c != null)
         if (!alive) return
         setQueue(cards)
         setIndex(0)
+        setAnswered(0)
         setShowAnswer(false)
         setLoading(false)
         return
@@ -46,6 +50,7 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
       if (!alive) return
       setQueue(cards)
       setIndex(0)
+      setAnswered(0)
       setShowAnswer(false)
       setLoading(false)
     })()
@@ -95,16 +100,38 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
     if (!card || busy) return
     setBusy(true)
     try {
-      await answerCard(card, rating, source)
+      const updated = await answerCard(card, rating, source)
+      setAnswered((n) => n + 1)
       setShowAnswer(false)
-      setIndex((i) => i + 1)
+
+      if (source === 'normal') {
+        const now = Date.now()
+        const stillLearning =
+          (updated.state === 'learning' || updated.state === 'relearning') &&
+          updated.due <= now + LEARNING_REQUEUE_MS
+
+        setQueue((prev) => {
+          const rest = prev.slice(index + 1).filter((c) => c.id !== updated.id)
+          if (stillLearning) {
+            // Insert by due order among remaining
+            const insertAt = rest.findIndex((c) => c.due > updated.due)
+            if (insertAt === -1) rest.push(updated)
+            else rest.splice(insertAt, 0, updated)
+          }
+          return rest
+        })
+        setIndex(0)
+      } else {
+        setIndex((i) => i + 1)
+      }
     } finally {
       setBusy(false)
     }
   }
 
-  const done = !loading && (!card || index >= queue.length)
-  const progress = queue.length ? Math.min(index / queue.length, 1) : 0
+  const done = !loading && !card
+  const totalHint = answered + queue.length
+  const progress = totalHint ? answered / totalHint : 0
 
   return (
     <div className="app-shell study-screen">
@@ -114,12 +141,13 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
         </Link>
         <h1>{source === 'custom' ? '補強復習' : '学習'}</h1>
         <div className="muted" style={{ minWidth: 48, textAlign: 'right' }}>
-          {Math.min(index + (done ? 0 : 1), queue.length)}/{queue.length}
+          {answered}
+          {queue.length > 0 ? ` · 残${queue.length}` : ''}
         </div>
       </header>
 
       <div className="progress-line">
-        <div style={{ width: `${progress * 100}%` }} />
+        <div style={{ width: `${Math.min(progress, 1) * 100}%` }} />
       </div>
 
       {loading ? (
@@ -142,7 +170,7 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
         <>
           <div className="study-path">{rendered.deckPathParts.join(' › ')}</div>
           <StudyCardView
-            key={card!.id}
+            key={card!.id + ':' + answered}
             rendered={rendered}
             showAnswer={showAnswer}
             onReveal={() => setShowAnswer(true)}
