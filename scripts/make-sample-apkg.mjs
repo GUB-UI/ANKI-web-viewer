@@ -5,6 +5,11 @@ import JSZip from 'jszip'
 
 const outDir = process.argv[2] || 'e2e/fixtures'
 fs.mkdirSync(outDir, { recursive: true })
+const out = path.join(outDir, 'sample.apkg')
+if (fs.existsSync(out) && !process.argv.includes('--force')) {
+  console.log('using existing', out)
+  process.exit(0)
+}
 
 const SQL = await initSqlJs()
 const db = new SQL.Database()
@@ -26,6 +31,7 @@ CREATE TABLE revlog (
   id integer primary key, cid integer, usn integer, ease integer, ivl integer,
   lastIvl integer, factor integer, time integer, type integer
 );
+CREATE TABLE graves (usn integer, oid integer, type integer);
 `)
 
 const models = {
@@ -54,7 +60,7 @@ const dconf = { 1: { id: 1, new: { perDay: 20 } } }
 const now = Math.floor(Date.now() / 1000)
 const crt = now - 40 * 86400
 
-db.run(`INSERT INTO col VALUES (1,?,?,?,11,0,-1,0,'{}',?,?,?,'')`, [
+db.run(`INSERT INTO col VALUES (1,?,?,?,11,0,-1,0,'{}',?,?,?,'{}')`, [
   crt,
   now,
   now,
@@ -136,6 +142,5 @@ const zip = new JSZip()
 zip.file('collection.anki2', data)
 zip.file('media', '{}')
 const buf = await zip.generateAsync({ type: 'nodebuffer' })
-const out = path.join(outDir, 'sample.apkg')
 fs.writeFileSync(out, buf)
 console.log('wrote', out, buf.length)

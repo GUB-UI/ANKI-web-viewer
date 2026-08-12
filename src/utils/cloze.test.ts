@@ -18,4 +18,11 @@ describe('cloze', () => {
     expect(renderClozeBack(text, 1)).toContain('Tokyo')
     expect(renderClozeBack(text, 1)).toContain('Osaka')
   })
+
+  it('supports colons and hints inside cloze text', () => {
+    const withHint = '比率は {{c1::1:2::比率}} です'
+    expect(extractClozeIndices(withHint)).toEqual([1])
+    expect(renderClozeFront(withHint, 1)).toBe('比率は [比率] です')
+    expect(renderClozeBack(withHint, 1)).toContain('1:2')
+  })
 })

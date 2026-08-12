@@ -7,6 +7,8 @@ function makeCard(partial: Partial<Card> = {}): Card {
     id: 'c1',
     noteId: 'n1',
     deckId: 'd1',
+    active: 1,
+    sortOrder: 0,
     templateOrd: 0,
     cardType: 'basic',
     ...applyFsrsDefaults(),
@@ -35,6 +37,27 @@ describe('fsrs scheduler', () => {
       crt,
     })
     expect(scheduled.state).toBe('review')
-    expect(scheduled.due).toBe((crt + dueDays) * 86400000)
+    expect(scheduled.due).toBe(crt * 1000 + dueDays * 86400000)
+  })
+
+  it('preserves imported FSRS memory and day-learning due date', () => {
+    const crt = Math.floor(Date.UTC(2026, 0, 1) / 1000)
+    const scheduled = fromAnkiScheduling({
+      type: 1,
+      queue: 3,
+      due: 2,
+      ivl: -600,
+      reps: 2,
+      lapses: 0,
+      crt,
+      stability: 4.5,
+      difficulty: 6.2,
+      lastReviewTime: crt + 60,
+    })
+    expect(scheduled.state).toBe('learning')
+    expect(scheduled.due).toBe(crt * 1000 + 2 * 86400000)
+    expect(scheduled.stability).toBe(4.5)
+    expect(scheduled.difficulty).toBe(6.2)
+    expect(scheduled.lastReview).toBe((crt + 60) * 1000)
   })
 })

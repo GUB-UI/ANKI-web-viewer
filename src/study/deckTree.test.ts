@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Deck } from '../db/schema'
+import type { Deck, DeckCounts } from '../db/schema'
+import type { DailyNewContext } from './dailyNew'
 import {
   buildDeckForest,
   collectDescendantIds,
@@ -34,6 +35,21 @@ const decks: Deck[] = [
   },
 ]
 
+function dailyContext(remaining = 20): DailyNewContext {
+  return {
+    decks,
+    deckById: new Map(decks.map((deck) => [deck.id, deck])),
+    childrenOf: new Map([
+      ['en', ['tg', 'vin']],
+      ['tg', ['s1']],
+    ]),
+    limitByDeck: new Map(decks.map((deck) => [deck.id, remaining])),
+    introducedByDeck: new Map(),
+    introducedInSubtree: new Map(decks.map((deck) => [deck.id, 0])),
+    remainingByDeck: new Map(decks.map((deck) => [deck.id, remaining])),
+  }
+}
+
 describe('deckTree', () => {
   it('builds hierarchy', () => {
     const forest = buildDeckForest(decks)
@@ -48,25 +64,37 @@ describe('deckTree', () => {
   })
 
   it('aggregates counts to parents', () => {
-    const now = Date.now()
+    const directDue = new Map<string, DeckCounts>([
+      ['s1', { new: 0, review: 1, learning: 0 }],
+    ])
     const counts = computeDeckCounts(
       decks,
-      [
-        { deckId: 's1', state: 'new', due: now },
-        { deckId: 's1', state: 'review', due: now - 1000 },
-        { deckId: 'vin', state: 'new', due: now },
-      ],
+      directDue,
       new Map([
-        ['s1', 20],
-        ['vin', 20],
-        ['tg', 20],
-        ['en', 20],
+        ['s1', 1],
+        ['vin', 1],
       ]),
-      now,
+      dailyContext(),
     )
     expect(counts.get('s1')).toEqual({ new: 1, review: 1, learning: 0 })
     expect(counts.get('tg')!.new).toBe(1)
     expect(counts.get('en')!.new).toBe(2)
     expect(counts.get('en')!.review).toBe(1)
+  })
+
+  it('uses a parent daily limit as one shared subtree cap', () => {
+    const context = dailyContext()
+    context.remainingByDeck.set('en', 1)
+    const counts = computeDeckCounts(
+      decks,
+      new Map(),
+      new Map([
+        ['s1', 10],
+        ['vin', 10],
+      ]),
+      context,
+    )
+    expect(counts.get('en')!.new).toBe(1)
+    expect(counts.get('s1')!.new).toBe(10)
   })
 })

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const apkg = path.join(__dirname, 'fixtures/sample.apkg')
+const modernApkg = path.join(__dirname, 'fixtures/sample-modern.apkg')
 
 test.describe('Kioku MVP smoke', () => {
   test('import → study → custom → settings', async ({ page }) => {
@@ -60,5 +61,34 @@ test.describe('Kioku MVP smoke', () => {
     await page.getByRole('link', { name: '設定' }).click()
     await expect(page.getByRole('heading', { name: '設定' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'バックアップを書き出す' })).toBeVisible()
+  })
+
+  test('imports the real collection.anki21b from a modern package', async ({ page }) => {
+    await page.goto('./')
+    await page.getByRole('link', { name: 'インポート' }).click()
+    await page.locator('input[type="file"]').setInputFiles(modernApkg)
+    await expect(page.getByText('Import完了')).toBeVisible({ timeout: 30000 })
+    await expect(page.getByText('6', { exact: true }).first()).toBeVisible()
+    await page.getByRole('button', { name: 'デッキを見る' }).click()
+    await expect(page.getByText('英語')).toBeVisible()
+    await expect(page.getByText(/newer version of Anki/i)).toHaveCount(0)
+    await expect(page.getByText('Default')).toHaveCount(0)
+  })
+
+  test('reloads and imports a deck with the network offline', async ({
+    page,
+    context,
+  }) => {
+    await page.goto('./')
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready
+    })
+    await page.reload()
+    await context.setOffline(true)
+    await page.reload()
+    await expect(page.getByText('Kioku')).toBeVisible()
+    await page.getByRole('link', { name: 'インポート' }).click()
+    await page.locator('input[type="file"]').setInputFiles(apkg)
+    await expect(page.getByText('Import完了')).toBeVisible({ timeout: 30000 })
   })
 })
