@@ -135,14 +135,17 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
 
   return (
     <div className="app-shell study-screen">
-      <header className="page-header">
+      <header className="page-header" style={{ alignItems: 'center' }}>
         <Link to="/" className="icon-btn" aria-label="戻る">
           ←
         </Link>
         <h1>{source === 'custom' ? '補強復習' : '学習'}</h1>
-        <div className="muted" style={{ minWidth: 48, textAlign: 'right' }}>
+        <div
+          className="muted numeric"
+          style={{ minWidth: 50, textAlign: 'right', fontSize: '0.8rem' }}
+        >
           {answered}
-          {queue.length > 0 ? ` · 残${queue.length}` : ''}
+          {queue.length > 0 ? ` / 残${queue.length}` : ''}
         </div>
       </header>
 
@@ -168,7 +171,10 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
         </div>
       ) : rendered ? (
         <>
-          <div className="study-path">{rendered.deckPathParts.join(' › ')}</div>
+          <div className="study-path">
+            <span className="eyebrow" aria-hidden />
+            {rendered.deckPathParts.join(' › ')}
+          </div>
           <StudyCardView
             key={card!.id + ':' + answered}
             rendered={rendered}

@@ -104,15 +104,14 @@ export function DecksPage() {
   return (
     <div className="app-shell">
       <header className="page-header">
-        <div>
+        <div className="brand-block">
+          <span className="eyebrow">Local Deck</span>
           <div className="brand">
             Kio<span>ku</span>
           </div>
-          <div className="muted" style={{ fontSize: '0.85rem', marginTop: 4 }}>
-            開く → 覚える → 閉じる
-          </div>
+          <span className="brand-jp">記憶</span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="header-actions">
           <Link to="/import" className="icon-btn" aria-label="インポート">
             ＋
           </Link>
@@ -123,12 +122,12 @@ export function DecksPage() {
       </header>
 
       {loadError ? (
-        <div className="empty-state">
+        <div className="empty-state glass">
           <h2 style={{ marginTop: 0, color: 'var(--danger)' }}>読み込みエラー</h2>
           <p>{loadError}</p>
         </div>
       ) : decks.length === 0 ? (
-        <div className="empty-state">
+        <div className="empty-state glass">
           <h2 style={{ marginTop: 0 }}>デッキがありません</h2>
           <p>Ankiの .apkg を読み込んで、このiPhoneだけで復習を続けましょう。</p>
           <Link to="/import" className="btn btn-primary btn-block" style={{ marginTop: 20 }}>
@@ -137,24 +136,34 @@ export function DecksPage() {
         </div>
       ) : (
         <>
-          <DeckTree
-            nodes={forest}
-            counts={counts}
-            expanded={expanded}
-            onToggle={toggle}
-            onOpen={openDeck}
-            onLongPress={setMenuDeck}
-          />
+          <div className="panel glass">
+            <div className="panel-head">
+              <span className="eyebrow">Decks</span>
+              <span className="index numeric">{decks.length}</span>
+            </div>
+            <DeckTree
+              nodes={forest}
+              counts={counts}
+              expanded={expanded}
+              onToggle={toggle}
+              onOpen={openDeck}
+              onLongPress={setMenuDeck}
+            />
+          </div>
           <div className="today-bar">
-            <div className="today-item">
+            <div className="today-item glass">
               <div className="label">今日 · 新規</div>
               <div className="value">{today.new}</div>
             </div>
-            <div className="today-item">
+            <div className="today-item glass">
               <div className="label">今日 · 復習</div>
               <div className="value">{today.review}</div>
             </div>
           </div>
+          <footer className="shell-footer">
+            <span>Sumiwatari</span>
+            <span>Designed with care</span>
+          </footer>
         </>
       )}
 

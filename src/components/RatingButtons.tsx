@@ -17,7 +17,7 @@ const CLASS: Record<RatingValue, string> = {
 
 export function RatingButtons({ previews, onRate, disabled }: Props) {
   return (
-    <div className="rating-grid">
+    <div className="rating-dock glass-raised">
       {ORDER.map((rating) => (
         <button
           key={rating}

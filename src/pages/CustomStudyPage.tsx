@@ -77,13 +77,14 @@ export function CustomStudyPage() {
         <div style={{ width: 48 }} />
       </header>
 
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted numeric" style={{ marginTop: 0, fontSize: '0.8rem', letterSpacing: '0.08em' }}>
         {deck?.path ?? '—'}
       </p>
 
       <section className="section">
+        <span className="eyebrow">01 New</span>
         <h2>今日の新規カード</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted" style={{ marginTop: 0, lineHeight: 1.9, fontSize: '0.9rem' }}>
           デッキ設定は変えず、このデッキと配下の合計上限を今日だけ上書きします。
           現在の有効値: {newLimit}
         </p>
@@ -110,8 +111,9 @@ export function CustomStudyPage() {
       </section>
 
       <section className="section">
+        <span className="eyebrow is-warm">02 Relearn</span>
         <h2>間違えたカードを復習</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted" style={{ marginTop: 0, lineHeight: 1.9, fontSize: '0.9rem' }}>
           通常学習で Again したカードだけ。FSRS予定は変更しません。
         </p>
         <div className="field">

@@ -98,6 +98,7 @@ export function SettingsPage() {
       </header>
 
       <section className="section">
+        <span className="eyebrow">01 Study</span>
         <h2>学習</h2>
         <div className="field">
           <label htmlFor="new-cards">1日の新規カード（デフォルト）</label>
@@ -124,6 +125,7 @@ export function SettingsPage() {
       </section>
 
       <section className="section">
+        <span className="eyebrow">02 Appearance</span>
         <h2>表示</h2>
         <div className="row-between">
           <span>ダークモード</span>
@@ -139,8 +141,9 @@ export function SettingsPage() {
       </section>
 
       <section className="section">
+        <span className="eyebrow is-warm">03 Data</span>
         <h2>データ</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted" style={{ marginTop: 0, lineHeight: 1.9 }}>
           最終バックアップ
           <br />
           {formatBackupDate(settings.lastBackupAt)}

@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "node scripts/make-sample-apkg.mjs e2e/fixtures && playwright test",
-    "fixture:apkg": "node scripts/make-sample-apkg.mjs e2e/fixtures --force"
+    "fixture:apkg": "node scripts/make-sample-apkg.mjs e2e/fixtures --force",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "@fontsource/outfit": "^5.3.0",

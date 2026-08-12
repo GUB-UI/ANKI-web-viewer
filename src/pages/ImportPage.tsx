@@ -72,8 +72,11 @@ export function ImportPage() {
 
       {!result && !error && (
         <>
-          <h2 style={{ marginTop: 8 }}>Ankiデッキを読み込む</h2>
-          <p className="muted">
+          <span className="eyebrow">Object · もの</span>
+          <h2 className="display" style={{ margin: '12px 0 10px', fontWeight: 400 }}>
+            Ankiデッキを読み込む
+          </h2>
+          <p className="muted" style={{ lineHeight: 1.9, fontSize: '0.93rem' }}>
             PCのAnkiから書き出した .apkg を選択してください。データはこの端末だけに保存されます。
           </p>
           <input
@@ -84,7 +87,7 @@ export function ImportPage() {
             onChange={(e) => void onFile(e.target.files?.[0])}
           />
           <div
-            className={`drop-zone ${dragOver ? 'over' : ''}`}
+            className={`drop-zone glass${dragOver ? ' over' : ''}`}
             onDragEnter={(e) => {
               e.preventDefault()
               setDragOver(true)
@@ -146,18 +149,21 @@ export function ImportPage() {
 
       {result && (
         <div style={{ marginTop: 24 }} className="stack">
-          <h2 style={{ margin: 0 }}>Import完了</h2>
-          <div className="today-bar" style={{ marginTop: 0, borderTop: 'none', paddingTop: 0 }}>
-            <div className="today-item">
+          <span className="eyebrow">Complete</span>
+          <h2 className="display" style={{ margin: 0, fontWeight: 400 }}>
+            Import完了
+          </h2>
+          <div className="today-bar" style={{ marginTop: 4 }}>
+            <div className="today-item glass">
               <div className="label">Cards</div>
               <div className="value">{result.cards}</div>
             </div>
-            <div className="today-item">
+            <div className="today-item glass">
               <div className="label">Decks</div>
               <div className="value">{result.decks}</div>
             </div>
           </div>
-          <div className="today-item">
+          <div className="today-item glass">
             <div className="label">Media</div>
             <div className="value">{result.media}</div>
           </div>
@@ -183,16 +189,21 @@ export function ImportPage() {
 
       {error && (
         <div style={{ marginTop: 24 }} className="stack">
-          <h2 style={{ margin: 0, color: 'var(--danger)' }}>Import失敗</h2>
+          <span className="eyebrow is-warm">Error</span>
+          <h2 className="display" style={{ margin: 0, fontWeight: 400, color: 'var(--danger)' }}>
+            Import失敗
+          </h2>
           <p>{error.message}</p>
           {error.detail && (
             <pre
               style={{
                 whiteSpace: 'pre-wrap',
                 background: 'var(--surface)',
-                padding: 12,
-                borderRadius: 12,
+                border: '1px solid var(--border)',
+                padding: 14,
+                borderRadius: 'var(--radius-sm)',
                 fontSize: 13,
+                lineHeight: 1.7,
                 overflow: 'auto',
               }}
             >

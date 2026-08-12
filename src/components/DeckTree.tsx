@@ -54,6 +54,7 @@ function DeckBranch({
   const isOpen = expanded.has(node.deck.id)
   const c = counts.get(node.deck.id) ?? { new: 0, review: 0, learning: 0 }
   const due = totalDue(c)
+  const reviewDue = c.review + c.learning
 
   let pressTimer: number | undefined
 
@@ -61,7 +62,7 @@ function DeckBranch({
     <>
       <div
         className="deck-row"
-        style={{ paddingLeft: node.depth * 14 }}
+        style={{ paddingLeft: node.depth * 16 }}
         onTouchStart={() => {
           if (!onLongPress) return
           pressTimer = window.setTimeout(() => onLongPress(node.deck), 480)
@@ -80,7 +81,7 @@ function DeckBranch({
             aria-label={isOpen ? '閉じる' : '開く'}
             onClick={() => onToggle(node.deck.id)}
           >
-            {isOpen ? '▼' : '▶'}
+            {isOpen ? '▾' : '▸'}
           </button>
         ) : (
           <span className="deck-toggle" aria-hidden>
@@ -90,14 +91,17 @@ function DeckBranch({
         <button type="button" className="deck-main" onClick={() => onOpen(node.deck)}>
           <span className="deck-name">{node.deck.name}</span>
           <span className="deck-meta">
-            {c.new} new · {c.review + c.learning} review
+            <i className={c.new > 0 ? 'on-new' : undefined} aria-hidden />
+            {c.new} new
+            <i className={reviewDue > 0 ? 'on-due' : undefined} aria-hidden />
+            {reviewDue} review
           </span>
         </button>
-        <span className="deck-count">{due}</span>
+        <span className={`deck-count${due === 0 ? ' is-zero' : ''}`}>{due}</span>
         {onLongPress && (
           <button
             type="button"
-            className="deck-toggle"
+            className="deck-menu"
             aria-label="メニュー"
             onClick={() => onLongPress(node.deck)}
           >

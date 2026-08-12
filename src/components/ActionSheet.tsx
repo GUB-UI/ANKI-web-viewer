@@ -14,16 +14,13 @@ export function ActionSheet({ title, actions, onClose }: Props) {
   return (
     <div className="menu-sheet" onClick={onClose} role="presentation">
       <div
-        className="menu-sheet-inner"
+        className="menu-sheet-inner glass-raised"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        {title && (
-          <div className="muted" style={{ padding: '10px 16px 6px', fontSize: '0.9rem' }}>
-            {title}
-          </div>
-        )}
+        <div className="sheet-grabber" aria-hidden />
+        {title && <div className="sheet-title">{title}</div>}
         {actions.map((a) => (
           <button
             key={a.label}

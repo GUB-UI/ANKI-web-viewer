@@ -88,7 +88,7 @@ export function StudyCardView({
   return (
     <div className="card-stage">
       <div
-        className={`card-face ${swiping ? 'swiping' : ''}`}
+        className={`card-face glass${swiping ? ' swiping' : ''}`}
         style={{
           transform: `translate(${offset.x}px, ${offset.y}px) rotate(${offset.x / 40}deg)`,
           opacity: swiping ? 0.92 : 1,
