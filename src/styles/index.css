@@ -35,11 +35,11 @@
   --bloom-vermilion: rgba(209, 71, 78, 0.16);
   --bloom-vermilion-soft: rgba(209, 71, 78, 0.1);
 
-  /* rating ink */
-  --again: #c0433f;
-  --hard: #a2661f;
-  --good: #1f7458;
-  --easy: #4f66d6;
+  /* system semantics */
+  --sys-red: #d70015;
+  --on-accent: #ffffff;
+  --control-fill: rgba(19, 26, 36, 0.05);
+  --control-fill-active: rgba(19, 26, 36, 0.09);
 
   /* liquid glass */
   --glass: rgba(255, 255, 255, 0.5);
@@ -118,10 +118,10 @@ html[data-theme='dark'] {
   --vermilion: #f2868b;
   --vermilion-wash: rgba(242, 134, 139, 0.13);
 
-  --again: #f0868b;
-  --hard: #e0b167;
-  --good: #6fd0ac;
-  --easy: #9fb2ff;
+  --sys-red: #ff6961;
+  --on-accent: #0d121b;
+  --control-fill: rgba(233, 240, 252, 0.07);
+  --control-fill-active: rgba(233, 240, 252, 0.13);
 
   --glass: rgba(233, 240, 252, 0.07);
   --glass-raised: rgba(233, 240, 252, 0.11);
@@ -343,6 +343,33 @@ html[data-theme='dark'] .glass-raised::after {
   background: var(--line);
   border: 0;
   margin: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mode-chip,
+.page-header h1.mode-chip {
+  margin: 0;
+  padding: 6px 13px;
+  border: 1px solid color-mix(in srgb, var(--vermilion) 32%, transparent);
+  border-radius: 999px;
+  background: var(--vermilion-wash);
+  color: var(--vermilion);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  line-height: 1.5;
 }
 
 /* ---- shell ------------------------------------------------------------- */
@@ -875,31 +902,6 @@ html[data-theme='dark'] .btn-primary {
   );
 }
 
-.audio-row {
-  display: flex;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.audio-btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: 1px solid var(--glass-edge);
-  background: var(--glass-raised);
-  color: var(--indigo);
-  font-size: 1.1rem;
-  cursor: pointer;
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  backdrop-filter: blur(16px) saturate(180%);
-  box-shadow: inset 0 1px 0 var(--glass-inner-top);
-  transition: transform var(--dur) var(--ease);
-}
-
-.audio-btn:active {
-  transform: scale(0.94);
-}
-
 .reveal-btn {
   width: 100%;
   min-height: 56px;
@@ -921,65 +923,72 @@ html[data-theme='dark'] .btn-primary {
   animation: dock-in var(--dur) var(--ease) both;
 }
 
+/*
+ * Apple's guidance: glass carries no inherent color, and tinting every control
+ * means nothing stands out. So the dock is the only glass layer, the four
+ * buttons stay monochrome, and colour is spent on one primary action (Good)
+ * plus the Again label, which reports a state.
+ */
 .rating-btn {
-  --tint: var(--good);
-  position: relative;
-  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-height: 66px;
+  min-height: 64px;
   padding: 10px 4px;
-  border: 1px solid color-mix(in srgb, var(--tint) 26%, var(--glass-edge));
+  border: 0;
   border-radius: var(--radius-sm);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--tint) 16%, rgba(255, 255, 255, 0.6)),
-    color-mix(in srgb, var(--tint) 7%, rgba(255, 255, 255, 0.3))
-  );
-  color: color-mix(in srgb, var(--tint) 78%, var(--ink));
-  font-size: 0.88rem;
-  letter-spacing: 0.04em;
+  background: var(--control-fill);
+  color: var(--ink);
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
   cursor: pointer;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
-}
-
-html[data-theme='dark'] .rating-btn {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--tint) 24%, transparent),
-    color-mix(in srgb, var(--tint) 8%, transparent)
-  );
-  color: color-mix(in srgb, var(--tint) 90%, #fff);
-  box-shadow: inset 0 1px 0 var(--glass-inner-top);
+  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .rating-btn:active {
   transform: scale(0.96);
+  background: var(--control-fill-active);
 }
 
 .rating-btn small {
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  opacity: 0.72;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
 }
 
 .rating-btn.again {
-  --tint: var(--again);
+  color: var(--sys-red);
 }
-.rating-btn.hard {
-  --tint: var(--hard);
+
+.rating-btn.again small {
+  color: color-mix(in srgb, var(--sys-red) 45%, var(--ink-muted));
 }
+
+/* prominent: the default answer gets the accent as a filled background */
 .rating-btn.good {
-  --tint: var(--good);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--indigo) 92%, transparent),
+    color-mix(in srgb, var(--indigo) 76%, transparent)
+  );
+  color: var(--on-accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
-.rating-btn.easy {
-  --tint: var(--easy);
+
+.rating-btn.good small {
+  color: color-mix(in srgb, var(--on-accent) 72%, transparent);
+}
+
+.rating-btn.good:active {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--indigo) 100%, transparent),
+    color-mix(in srgb, var(--indigo) 84%, transparent)
+  );
 }
 
 .done-panel {

@@ -139,10 +139,14 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
         <Link to="/" className="icon-btn" aria-label="戻る">
           ←
         </Link>
-        <h1>{source === 'custom' ? '補強復習' : '学習'}</h1>
+        {/* Plain study needs no title; the reinforcement mode does, since it
+            does not touch the schedule. */}
+        <h1 className={source === 'custom' ? 'mode-chip' : 'sr-only'}>
+          {source === 'custom' ? '補強復習' : '学習'}
+        </h1>
         <div
           className="muted numeric"
-          style={{ minWidth: 50, textAlign: 'right', fontSize: '0.8rem' }}
+          style={{ marginLeft: 'auto', fontSize: '0.8rem' }}
         >
           {answered}
           {queue.length > 0 ? ` / 残${queue.length}` : ''}

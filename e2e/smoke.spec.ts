@@ -26,7 +26,7 @@ test.describe('Kioku MVP smoke', () => {
     await page.getByRole('button', { name: 'メニュー' }).first().click()
     await page.getByRole('button', { name: '学習開始' }).click()
 
-    await expect(page.getByRole('heading', { name: '学習' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '答えを見る' })).toBeVisible()
     await page.getByRole('button', { name: '答えを見る' }).click()
     const dueBefore = await page.locator('.rating-btn.good small').textContent()
     expect(dueBefore).toBeTruthy()
