@@ -1,32 +1,62 @@
 import { useEffect, useRef, useState } from 'react'
 import { db } from '../db/database'
+import { guessMimeType } from '../utils/mediaRefs'
 
-/** Resolve media filenames to object URLs; revokes previous set when replaced. */
+export type ResolvedMedia = {
+  url: string
+  blob: Blob
+}
+
+function typedBlob(filename: string, blob: Blob, mimeType?: string): Blob {
+  const type =
+    (mimeType && mimeType !== 'application/octet-stream' && mimeType) ||
+    (blob.type && blob.type !== 'application/octet-stream' && blob.type) ||
+    guessMimeType(filename)
+  if (blob.type === type) return blob
+  return new Blob([blob], { type })
+}
+
+/** Resolve media filenames to object URLs + typed blobs. */
 export function useMediaUrls(filenames: string[]): Map<string, string> {
-  const [map, setMap] = useState<Map<string, string>>(new Map())
+  const entries = useMediaEntries(filenames)
+  return entries.urls
+}
+
+export function useMediaEntries(filenames: string[]): {
+  urls: Map<string, string>
+  blobs: Map<string, Blob>
+  /** True once the async lookup for this key has settled. */
+  ready: boolean
+} {
+  const [urls, setUrls] = useState<Map<string, string>>(() => new Map())
+  const [blobs, setBlobs] = useState<Map<string, Blob>>(() => new Map())
+  const [ready, setReady] = useState(filenames.length === 0)
   const createdRef = useRef<string[]>([])
-  // Stable dependency — array identity changes every render even when contents match.
   const key = filenames.join('\0')
 
   useEffect(() => {
     let cancelled = false
     const created: string[] = []
+    setReady(false)
 
     ;(async () => {
-      const next = new Map<string, string>()
+      const nextUrls = new Map<string, string>()
+      const nextBlobs = new Map<string, Blob>()
       const unique = key ? [...new Set(key.split('\0').filter(Boolean))] : []
+
       if (unique.length === 0) {
         if (!cancelled) {
           for (const url of createdRef.current) URL.revokeObjectURL(url)
           createdRef.current = []
-          setMap(next)
+          setUrls(nextUrls)
+          setBlobs(nextBlobs)
+          setReady(true)
         }
         return
       }
 
       let rows = await db.media.where('filename').anyOf(unique).toArray()
 
-      // Case-insensitive fallback when the package and sound tags disagree on case.
       if (rows.length < unique.length) {
         const found = new Set(rows.map((row) => row.filename.toLowerCase()))
         const missing = unique.filter((name) => !found.has(name.toLowerCase()))
@@ -48,12 +78,19 @@ export function useMediaUrls(filenames: string[]): Map<string, string> {
           rows.find((item) => item.filename === name) ??
           byLower.get(name.toLowerCase())
         if (!row) continue
-        const url = URL.createObjectURL(row.blob)
+        const blob = typedBlob(row.filename, row.blob, row.mimeType)
+        const url = URL.createObjectURL(blob)
         created.push(url)
-        next.set(name, url)
-        next.set(row.filename, url)
-        next.set(name.toLowerCase(), url)
-        next.set(row.filename.toLowerCase(), url)
+        const keys = new Set([
+          name,
+          row.filename,
+          name.toLowerCase(),
+          row.filename.toLowerCase(),
+        ])
+        for (const k of keys) {
+          nextUrls.set(k, url)
+          nextBlobs.set(k, blob)
+        }
       }
 
       if (cancelled) {
@@ -61,11 +98,11 @@ export function useMediaUrls(filenames: string[]): Map<string, string> {
         return
       }
 
-      // Revoke the previous generation only after the next set is ready so an
-      // in-flight <audio> / <img> is not pointing at a dead blob URL.
       for (const url of createdRef.current) URL.revokeObjectURL(url)
       createdRef.current = created
-      setMap(next)
+      setUrls(nextUrls)
+      setBlobs(nextBlobs)
+      setReady(true)
     })()
 
     return () => {
@@ -81,5 +118,5 @@ export function useMediaUrls(filenames: string[]): Map<string, string> {
     [],
   )
 
-  return map
+  return { urls, blobs, ready }
 }

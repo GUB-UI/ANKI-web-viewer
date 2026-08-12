@@ -1,93 +1,104 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-class FakeAudio {
-  static instances: FakeAudio[] = []
-  src = ''
-  muted = false
-  volume = 1
-  currentTime = 0
-  paused = true
-  ended = false
-  readyState = 4
-  preload = 'auto'
-  playsInline = true
-  listeners = new Map<string, Set<() => void>>()
+class FakeBufferSource {
+  buffer: AudioBuffer | null = null
+  onended: ((ev?: Event) => void) | null = null
+  connect() {
+    return this
+  }
+  disconnect() {}
+  start() {
+    queueMicrotask(() => this.onended?.(new Event('ended')))
+  }
+  stop() {
+    this.onended?.(new Event('ended'))
+  }
+}
 
-  constructor() {
-    FakeAudio.instances.push(this)
-  }
-
-  setAttribute() {}
-  load() {
-    this.readyState = 4
-  }
-  addEventListener(type: string, fn: () => void) {
-    if (!this.listeners.has(type)) this.listeners.set(type, new Set())
-    this.listeners.get(type)!.add(fn)
-  }
-  removeEventListener(type: string, fn: () => void) {
-    this.listeners.get(type)?.delete(fn)
-  }
-  dispatch(type: string) {
-    for (const fn of [...(this.listeners.get(type) ?? [])]) fn()
-  }
-  play() {
-    this.paused = false
-    this.ended = false
+class FakeAudioContext {
+  state: AudioContextState = 'running'
+  sampleRate = 44100
+  destination = {} as AudioDestinationNode
+  resume() {
+    this.state = 'running'
     return Promise.resolve()
   }
-  pause() {
-    this.paused = true
+  createBuffer(channels: number, length: number, rate: number) {
+    return {
+      duration: length / rate,
+      length,
+      numberOfChannels: channels,
+      sampleRate: rate,
+      getChannelData: () => new Float32Array(length),
+      copyFromChannel() {},
+      copyToChannel() {},
+    } as AudioBuffer
+  }
+  createBufferSource() {
+    return new FakeBufferSource() as unknown as AudioBufferSourceNode
+  }
+  decodeAudioData(data: ArrayBuffer) {
+    if (data.byteLength === 0) return Promise.reject(new Error('empty'))
+    return Promise.resolve(this.createBuffer(1, 8, this.sampleRate))
+  }
+  close() {
+    this.state = 'closed'
+    return Promise.resolve()
   }
 }
 
 async function loadAudioModule() {
   vi.resetModules()
-  FakeAudio.instances = []
-  vi.stubGlobal('Audio', FakeAudio)
+  vi.stubGlobal('AudioContext', FakeAudioContext)
+  vi.stubGlobal('webkitAudioContext', FakeAudioContext)
+  vi.stubGlobal(
+    'Audio',
+    class {
+      src = ''
+      muted = false
+      volume = 1
+      currentTime = 0
+      paused = true
+      ended = false
+      preload = 'auto'
+      setAttribute() {}
+      load() {}
+      play() {
+        return Promise.resolve()
+      }
+      pause() {}
+      addEventListener() {}
+      removeEventListener() {}
+    },
+  )
   return import('./audio')
 }
 
-describe('audio unlock/playback', () => {
+describe('audio unlock/playback (Web Audio)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.resetModules()
-    FakeAudio.instances = []
   })
 
-  it('unlocks with near-silent volume rather than muted', async () => {
+  it('unlocks via AudioContext.resume inside gesture', async () => {
     const mod = await loadAudioModule()
     const ok = await mod.unlockAudio()
     expect(ok).toBe(true)
     expect(mod.isAudioUnlocked()).toBe(true)
-    const audio = FakeAudio.instances[0]!
-    expect(audio.muted).toBe(false)
-    expect(audio.volume).toBe(1)
-    expect(audio.src.startsWith('data:audio/wav')).toBe(true)
   })
 
-  it('resolves waiters when stop interrupts playback', async () => {
+  it('plays a typed blob through decodeAudioData', async () => {
     const mod = await loadAudioModule()
     await mod.unlockAudio()
-
-    const playing = mod.playAudioUrls(['blob:test-1'])
-    await vi.waitFor(() => {
-      expect(FakeAudio.instances[0]?.paused).toBe(false)
-    })
-    mod.stopAudioPlayback()
-    await expect(playing).resolves.toBe(false)
+    const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
+    const blob = new Blob([bytes], { type: 'audio/mpeg' })
+    await expect(mod.playAudioBlobs([blob])).resolves.toBe(true)
   })
 
-  it('resolves true when ended fires', async () => {
+  it('stopAudioPlayback is safe before and after unlock', async () => {
     const mod = await loadAudioModule()
+    expect(() => mod.stopAudioPlayback()).not.toThrow()
     await mod.unlockAudio()
-    const playing = mod.playAudioUrls(['blob:test-2'])
-    await vi.waitFor(() => {
-      expect(FakeAudio.instances[0]?.paused).toBe(false)
-    })
-    const audio = FakeAudio.instances[0]!
-    audio.ended = true
-    audio.dispatch('ended')
-    await expect(playing).resolves.toBe(true)
+    expect(() => mod.stopAudioPlayback()).not.toThrow()
   })
 })

@@ -442,7 +442,7 @@ export async function importApkg(
         id: createId('media'),
         filename,
         mimeType,
-        blob: new Blob([buf.slice().buffer], { type: mimeType }),
+        blob: new Blob([buf.slice()], { type: mimeType }),
       })
       if (i % 50 === 0 || i === source.mediaEntries.length - 1) {
         report({

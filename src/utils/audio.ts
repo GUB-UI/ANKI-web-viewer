@@ -1,77 +1,99 @@
-/** iOS Safari audio unlock + playback.
+/** Card audio for iOS / iPadOS Safari PWAs.
  *
- * WebKit only marks an HTMLAudioElement as user-approved when play() runs
- * inside a gesture call stack. After that, the SAME element can change src
- * and play later (even after awaits). Creating a new Audio() resets trust.
+ * HTMLAudioElement + blob: URLs is unreliable on WebKit (empty Blob.type after
+ * IndexedDB, canplay hangs, gesture approval quirks). Web Audio API is the
+ * reliable path:
  *
- * Important iOS details:
- *  - Unlock with a near-silent volume, NOT muted — muted play does not unlock
- *    unmuted playback on WebKit.
- *  - play() must be invoked synchronously in the tap handler.
- *  - Pausing mid-wait must resolve the "ended" waiter or StrictMode cleanups
- *    leave playback hung forever.
+ *  1. On a user gesture: create/resume AudioContext and play a 1-sample buffer
+ *  2. Later: decodeAudioData(arrayBuffer) and BufferSource.start()
+ *
+ * HTMLAudioElement remains a fallback when decodeAudioData rejects a format.
  */
 
-// Minimal valid PCM WAV (~1 frame of silence @ 44.1kHz mono 16-bit).
-const SILENT_WAV =
-  'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA=='
+export type PlaybackSignal = { cancelled: boolean }
+
+type WebkitWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext
+  }
+
+function AudioCtxCtor(): typeof AudioContext {
+  const root = globalThis as WebkitWindow
+  const Ctor = root.AudioContext ?? root.webkitAudioContext
+  if (!Ctor) throw new Error('AudioContext unavailable')
+  return Ctor
+}
 
 let unlocked = false
 let unlockPromise: Promise<boolean> | null = null
-let player: HTMLAudioElement | null = null
-let playbackWaiter: ((ok: boolean) => void) | null = null
+let audioCtx: AudioContext | null = null
+let activeSource: AudioBufferSourceNode | null = null
+let activeFinish: ((ok: boolean) => void) | null = null
+let htmlPlayer: HTMLAudioElement | null = null
+let htmlWaiter: ((ok: boolean) => void) | null = null
 
-function getPlayer(): HTMLAudioElement {
-  if (!player) {
-    player = new Audio()
-    player.preload = 'auto'
-    player.setAttribute('playsinline', 'true')
-    // Safari iOS
-    ;(player as HTMLAudioElement & { playsInline?: boolean }).playsInline = true
+function getContext(): AudioContext {
+  if (!audioCtx) {
+    audioCtx = new (AudioCtxCtor())()
   }
-  return player
+  return audioCtx
 }
 
-function isSilentSrc(src: string): boolean {
-  return !src || src === SILENT_WAV || src.startsWith('data:audio/wav')
+function getHtmlPlayer(): HTMLAudioElement {
+  if (!htmlPlayer) {
+    htmlPlayer = new Audio()
+    htmlPlayer.preload = 'auto'
+    htmlPlayer.setAttribute('playsinline', 'true')
+    ;(htmlPlayer as HTMLAudioElement & { playsInline?: boolean }).playsInline =
+      true
+  }
+  return htmlPlayer
 }
 
-function finishWaiter(ok: boolean): void {
-  if (!playbackWaiter) return
-  const wait = playbackWaiter
-  playbackWaiter = null
+function finishHtmlWaiter(ok: boolean): void {
+  if (!htmlWaiter) return
+  const wait = htmlWaiter
+  htmlWaiter = null
   wait(ok)
 }
 
-/** Call from a tap handler (学習開始 / rating / reveal) before async work. */
+/** Call synchronously from a tap handler before any await. */
 export function unlockAudio(): Promise<boolean> {
-  if (unlocked) return Promise.resolve(true)
+  if (unlocked && audioCtx && audioCtx.state === 'running') {
+    return Promise.resolve(true)
+  }
   if (unlockPromise) return unlockPromise
 
-  const audio = getPlayer()
-  // Keep a real track if one is already loaded — don't interrupt it with silence.
-  if (isSilentSrc(audio.src)) {
-    audio.src = SILENT_WAV
+  let ctx: AudioContext
+  try {
+    ctx = getContext()
+  } catch {
+    return Promise.resolve(false)
   }
-  // Must NOT use muted=true — WebKit will not extend that approval to unmuted play.
-  audio.muted = false
-  audio.volume = 0.01
 
-  // play() MUST be invoked synchronously here (still inside the gesture).
-  const pending = audio.play()
+  // resume() must be kicked off inside the gesture call stack.
+  const resume = ctx.resume()
 
-  unlockPromise = pending
+  // 1-sample silent buffer — proves the graph is allowed to emit audio.
+  try {
+    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050)
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(ctx.destination)
+    source.start(0)
+  } catch {
+    // Non-fatal; resume() may still unlock.
+  }
+
+  unlockPromise = resume
     .then(() => {
-      if (isSilentSrc(audio.src)) {
-        audio.pause()
-        audio.currentTime = 0
-      }
-      audio.volume = 1
+      unlocked = ctx.state === 'running' || ctx.state === 'suspended'
+      // suspended can still become running on the next play; treat resume ok as unlock.
+      if (ctx.state === 'running') unlocked = true
       unlocked = true
       return true
     })
     .catch(() => {
-      audio.volume = 1
       unlockPromise = null
       return false
     })
@@ -84,120 +106,199 @@ export function isAudioUnlocked(): boolean {
 }
 
 export function stopAudioPlayback(): void {
-  if (!player) return
-  // Never cancel an in-flight unlock of the silent clip by blanking/pausing it
-  // before play() settles — WebKit forgets the gesture approval.
-  if (isSilentSrc(player.src) && !unlocked) return
-  player.pause()
-  finishWaiter(false)
+  if (activeSource) {
+    const source = activeSource
+    activeSource = null
+    source.onended = null
+    try {
+      source.stop()
+    } catch {
+      // already stopped
+    }
+    try {
+      source.disconnect()
+    } catch {
+      // ignore
+    }
+  }
+  if (activeFinish) {
+    const finish = activeFinish
+    activeFinish = null
+    finish(false)
+  }
+  if (htmlPlayer) {
+    htmlPlayer.pause()
+    finishHtmlWaiter(false)
+  }
 }
 
-function waitUntilEnded(
-  audio: HTMLAudioElement,
-  signal?: { cancelled: boolean },
-): Promise<boolean> {
-  if (signal?.cancelled) {
-    audio.pause()
-    return Promise.resolve(false)
+async function ensureRunning(
+  signal?: PlaybackSignal,
+): Promise<AudioContext | null> {
+  if (!unlocked) {
+    const ok = await unlockAudio()
+    if (!ok) return null
   }
+  if (signal?.cancelled) return null
+  const ctx = getContext()
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume()
+    } catch {
+      return null
+    }
+  }
+  return ctx.state === 'closed' ? null : ctx
+}
+
+async function playViaWebAudio(
+  ctx: AudioContext,
+  data: ArrayBuffer,
+  signal?: PlaybackSignal,
+): Promise<boolean> {
+  if (signal?.cancelled) return false
+
+  // Safari detaches the buffer; always copy first.
+  const copy = data.slice(0)
+  let audioBuffer: AudioBuffer
+  try {
+    audioBuffer = await ctx.decodeAudioData(copy)
+  } catch {
+    return false
+  }
+  if (signal?.cancelled) return false
+
+  stopAudioPlayback()
 
   return new Promise<boolean>((resolve) => {
+    const source = ctx.createBufferSource()
+    activeSource = source
+    source.buffer = audioBuffer
+    source.connect(ctx.destination)
     let settled = false
     const finish = (ok: boolean) => {
       if (settled) return
       settled = true
-      audio.removeEventListener('ended', onEnded)
-      audio.removeEventListener('error', onError)
-      if (playbackWaiter === finish) playbackWaiter = null
+      if (activeSource === source) activeSource = null
+      if (activeFinish === finish) activeFinish = null
+      try {
+        source.disconnect()
+      } catch {
+        // ignore
+      }
       resolve(ok)
     }
-    const onEnded = () => finish(true)
-    const onError = () => finish(false)
-    playbackWaiter = finish
-    audio.addEventListener('ended', onEnded)
-    audio.addEventListener('error', onError)
-    // Already finished (tiny clips / cached).
-    if (audio.ended) {
-      finish(true)
+    activeFinish = finish
+    source.onended = () => finish(true)
+    try {
+      source.start(0)
+    } catch {
+      finish(false)
       return
     }
-    if (signal?.cancelled || audio.paused) {
+    if (signal?.cancelled) {
+      try {
+        source.onended = null
+        source.stop()
+      } catch {
+        // ignore
+      }
       finish(false)
     }
   })
 }
 
-async function loadAndPlay(
-  audio: HTMLAudioElement,
-  url: string,
-  signal?: { cancelled: boolean },
+async function playViaHtmlAudio(
+  blob: Blob,
+  signal?: PlaybackSignal,
 ): Promise<boolean> {
   if (signal?.cancelled) return false
-
-  if (audio.src !== url) {
+  const audio = getHtmlPlayer()
+  const url = URL.createObjectURL(blob)
+  try {
     audio.src = url
     audio.load()
-  }
-
-  // Wait until the blob is decodable — iOS often rejects play() before canplay.
-  const haveFutureData =
-    typeof HTMLMediaElement !== 'undefined'
-      ? HTMLMediaElement.HAVE_FUTURE_DATA
-      : 3
-  if (audio.readyState < haveFutureData) {
-    const ready = await new Promise<boolean>((resolve) => {
-      const done = (ok: boolean) => {
-        audio.removeEventListener('canplay', onReady)
+    audio.muted = false
+    audio.volume = 1
+    try {
+      await audio.play()
+    } catch {
+      return false
+    }
+    if (signal?.cancelled) {
+      audio.pause()
+      return false
+    }
+    return await new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (ok: boolean) => {
+        if (settled) return
+        settled = true
+        audio.removeEventListener('ended', onEnded)
         audio.removeEventListener('error', onError)
+        if (htmlWaiter === finish) htmlWaiter = null
         resolve(ok)
       }
-      const onReady = () => done(true)
-      const onError = () => done(false)
-      audio.addEventListener('canplay', onReady)
+      const onEnded = () => finish(true)
+      const onError = () => finish(false)
+      htmlWaiter = finish
+      audio.addEventListener('ended', onEnded)
       audio.addEventListener('error', onError)
-      if (signal?.cancelled) done(false)
-      // readyState may have advanced synchronously after load().
-      if (audio.readyState >= haveFutureData) done(true)
+      if (audio.ended) finish(true)
+      else if (audio.paused) finish(false)
     })
-    if (!ready || signal?.cancelled) return false
+  } finally {
+    URL.revokeObjectURL(url)
   }
-
-  audio.muted = false
-  audio.volume = 1
-  try {
-    audio.currentTime = 0
-  } catch {
-    // Some WebKit builds throw if the media is not seekable yet.
-  }
-
-  try {
-    await audio.play()
-  } catch {
-    return false
-  }
-
-  return waitUntilEnded(audio, signal)
 }
 
-/** Plays each URL in order. Returns false if the browser blocked playback. */
-export async function playAudioUrls(
-  urls: string[],
-  signal?: { cancelled: boolean },
+/** Play blobs in order (Web Audio first, HTMLAudio fallback). */
+export async function playAudioBlobs(
+  blobs: Blob[],
+  signal?: PlaybackSignal,
 ): Promise<boolean> {
-  if (urls.length === 0) return true
-  // If the deck-tap unlock already succeeded this is a no-op. If not, we still
-  // try — tap-to-replay callers invoke unlockAudio() synchronously first.
-  if (!unlocked) {
-    const ok = await unlockAudio()
-    if (!ok) return false
-  }
-  if (signal?.cancelled) return false
+  if (blobs.length === 0) return true
+  const ctx = await ensureRunning(signal)
+  if (!ctx) return false
 
-  const audio = getPlayer()
-  for (const url of urls) {
+  for (const blob of blobs) {
     if (signal?.cancelled) return false
-    const ok = await loadAndPlay(audio, url, signal)
-    if (!ok) return false
+    const typed =
+      blob.type && blob.type !== 'application/octet-stream'
+        ? blob
+        : blob
+    let data: ArrayBuffer
+    try {
+      data = await typed.arrayBuffer()
+    } catch {
+      return false
+    }
+    if (signal?.cancelled) return false
+
+    const viaCtx = await playViaWebAudio(ctx, data, signal)
+    if (viaCtx) continue
+
+    // decodeAudioData rejected (unsupported codec) — try HTMLAudioElement.
+    const viaHtml = await playViaHtmlAudio(typed, signal)
+    if (!viaHtml) return false
   }
   return true
+}
+
+/** @deprecated Prefer playAudioBlobs — kept for any leftover URL-based callers. */
+export async function playAudioUrls(
+  urls: string[],
+  signal?: PlaybackSignal,
+): Promise<boolean> {
+  if (urls.length === 0) return true
+  const blobs: Blob[] = []
+  for (const url of urls) {
+    try {
+      const res = await fetch(url)
+      blobs.push(await res.blob())
+    } catch {
+      return false
+    }
+  }
+  return playAudioBlobs(blobs, signal)
 }

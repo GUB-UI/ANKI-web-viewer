@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RatingValue } from '../db/schema'
 import { rewriteMediaUrls, type RenderedCard } from '../utils/cardRender'
-import { useMediaUrls } from '../hooks/useMediaUrls'
+import { useMediaEntries } from '../hooks/useMediaUrls'
 import { extractMediaFilenames } from '../utils/mediaRefs'
 import { sanitizeCardHtml } from '../utils/sanitizeCardHtml'
 import {
-  playAudioUrls,
+  playAudioBlobs,
   stopAudioPlayback,
   unlockAudio,
 } from '../utils/audio'
@@ -25,16 +25,28 @@ interface Props {
 const SWIPE_THRESHOLD = 96
 const FLY_PX = 480
 
-function resolveUrls(
+type SoundResolve =
+  | { status: 'empty' }
+  | { status: 'loading' }
+  | { status: 'missing'; names: string[] }
+  | { status: 'ready'; blobs: Blob[] }
+
+function resolveSounds(
   filenames: string[],
-  urlMap: Map<string, string>,
-): string[] | null {
-  if (filenames.length === 0) return []
-  const urls = filenames
-    .map((name) => urlMap.get(name) ?? urlMap.get(name.toLowerCase()))
-    .filter((url): url is string => Boolean(url))
-  // null = media still loading (or missing). [] = no sounds on this side.
-  return urls.length === filenames.length ? urls : null
+  blobs: Map<string, Blob>,
+  ready: boolean,
+): SoundResolve {
+  if (filenames.length === 0) return { status: 'empty' }
+  if (!ready) return { status: 'loading' }
+  const resolved: Blob[] = []
+  const missing: string[] = []
+  for (const name of filenames) {
+    const blob = blobs.get(name) ?? blobs.get(name.toLowerCase())
+    if (blob) resolved.push(blob)
+    else missing.push(name)
+  }
+  if (missing.length > 0) return { status: 'missing', names: missing }
+  return { status: 'ready', blobs: resolved }
 }
 
 function clamp01(value: number): number {
@@ -61,7 +73,9 @@ export function StudyCardView({
     return [...names]
   }, [rendered])
 
-  const urlMap = useMediaUrls(allMedia)
+  const { urls: urlMap, blobs: blobMap, ready: mediaReady } =
+    useMediaEntries(allMedia)
+
   const front = useMemo(
     () => sanitizeCardHtml(rewriteMediaUrls(rendered.frontHtml, urlMap)),
     [rendered.frontHtml, urlMap],
@@ -71,13 +85,13 @@ export function StudyCardView({
     [rendered.backHtml, urlMap],
   )
 
-  const frontSoundUrls = useMemo(
-    () => resolveUrls(rendered.frontSounds, urlMap),
-    [rendered.frontSounds, urlMap],
+  const frontSounds = useMemo(
+    () => resolveSounds(rendered.frontSounds, blobMap, mediaReady),
+    [rendered.frontSounds, blobMap, mediaReady],
   )
-  const backSoundUrls = useMemo(
-    () => resolveUrls(rendered.backSounds, urlMap),
-    [rendered.backSounds, urlMap],
+  const backSounds = useMemo(
+    () => resolveSounds(rendered.backSounds, blobMap, mediaReady),
+    [rendered.backSounds, blobMap, mediaReady],
   )
 
   const [offsetX, setOffsetX] = useState(0)
@@ -85,6 +99,7 @@ export function StudyCardView({
   const [flying, setFlying] = useState<'left' | 'right' | null>(null)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [audioFailed, setAudioFailed] = useState(false)
+  const [audioBusy, setAudioBusy] = useState(false)
   const startX = useRef<number | null>(null)
   const offsetRef = useRef(0)
   const playedFront = useRef(false)
@@ -99,6 +114,7 @@ export function StudyCardView({
     setSwiping(false)
     setFlying(null)
     setAudioFailed(false)
+    setAudioBusy(false)
     offsetRef.current = 0
     stopAudioPlayback()
   }, [
@@ -108,43 +124,55 @@ export function StudyCardView({
     rendered.backSounds,
   ])
 
-  // Play the question the moment media URLs are ready — not on reveal.
+  // Front audio: play when blobs are ready. Still play after reveal if we missed
+  // the question face (auto-flip / slow IndexedDB on iPad).
   useEffect(() => {
-    if (showAnswer || playedFront.current) return
-    if (frontSoundUrls == null) return
-    if (frontSoundUrls.length === 0) {
+    if (playedFront.current) return
+    if (frontSounds.status === 'loading') return
+    if (frontSounds.status === 'empty') {
       playedFront.current = true
+      return
+    }
+    if (frontSounds.status === 'missing') {
+      playedFront.current = true
+      setAudioFailed(true)
       return
     }
     const signal = { cancelled: false }
     void (async () => {
-      const ok = await playAudioUrls(frontSoundUrls, signal)
+      setAudioBusy(true)
+      const ok = await playAudioBlobs(frontSounds.blobs, signal)
       if (signal.cancelled) return
+      setAudioBusy(false)
       if (ok) {
         playedFront.current = true
         setAudioFailed(false)
       } else {
-        // Allow a later tap (user gesture) to retry.
         setAudioFailed(true)
       }
     })()
     return () => {
       signal.cancelled = true
       stopAudioPlayback()
+      setAudioBusy(false)
     }
-  }, [frontSoundUrls, showAnswer])
+  }, [frontSounds])
 
   // Answer-side audio only after the answer is shown.
   useEffect(() => {
     if (!showAnswer || playedBack.current) return
-    if (backSoundUrls == null) return
-    if (backSoundUrls.length === 0) {
+    if (backSounds.status === 'loading') return
+    if (backSounds.status === 'empty') {
+      playedBack.current = true
+      return
+    }
+    if (backSounds.status === 'missing') {
       playedBack.current = true
       return
     }
     const signal = { cancelled: false }
     void (async () => {
-      const ok = await playAudioUrls(backSoundUrls, signal)
+      const ok = await playAudioBlobs(backSounds.blobs, signal)
       if (signal.cancelled) return
       if (ok) playedBack.current = true
     })()
@@ -152,9 +180,8 @@ export function StudyCardView({
       signal.cancelled = true
       stopAudioPlayback()
     }
-  }, [backSoundUrls, showAnswer])
+  }, [backSounds, showAnswer])
 
-  // Auto-flip: reveal the answer after N seconds on the question face.
   useEffect(() => {
     if (!autoFlipEnabled || showAnswer || flying) {
       setCountdown(null)
@@ -202,7 +229,6 @@ export function StudyCardView({
       return
     }
 
-    // 右 = Again, 左 = Good
     const rating: RatingValue = x > 0 ? 1 : 3
     const direction: 'left' | 'right' = x > 0 ? 'right' : 'left'
     busyRef.current = true
@@ -235,19 +261,19 @@ export function StudyCardView({
     onRate(rating)
   }
 
-  function replayFrontAudio(e: React.MouseEvent) {
-    // Only when the question face is showing — swipe uses the answer face.
-    if (showAnswer || !frontSoundUrls || frontSoundUrls.length === 0) return
-    // Ignore if the user is mid-swipe gesture machinery (answer only).
-    e.stopPropagation()
-    // Synchronous unlock inside the tap — this is the reliable iOS path when
-    // autoplay after navigation was blocked.
+  function replayAudio(which: 'front' | 'back') {
+    const target = which === 'front' ? frontSounds : backSounds
+    if (target.status !== 'ready') return
+    // Unlock synchronously inside the tap — required on iOS / iPadOS.
     void unlockAudio()
     setAudioFailed(false)
+    setAudioBusy(true)
     void (async () => {
-      const ok = await playAudioUrls(frontSoundUrls)
+      const ok = await playAudioBlobs(target.blobs)
+      setAudioBusy(false)
       if (!ok) setAudioFailed(true)
-      else playedFront.current = true
+      else if (which === 'front') playedFront.current = true
+      else playedBack.current = true
     })()
   }
 
@@ -256,13 +282,18 @@ export function StudyCardView({
   const towardGood = offsetX < -12
   const againOpacity = towardAgain ? progress : 0
   const goodOpacity = towardGood ? progress : 0
-  const canReplayFront =
-    !showAnswer && Boolean(frontSoundUrls && frontSoundUrls.length > 0)
+
+  const hasFrontAudio = rendered.frontSounds.length > 0
+  const hasBackAudio = rendered.backSounds.length > 0
+  const playableFront = frontSounds.status === 'ready'
+  const playableBack = backSounds.status === 'ready'
+  const missingAudio =
+    frontSounds.status === 'missing' || backSounds.status === 'missing'
 
   return (
     <div className="card-stage">
       <div
-        className={`card-face glass${swiping ? ' swiping' : ''}${flying ? ` flying flying-${flying}` : ''}${countdown != null ? ' auto-flipping' : ''}${canReplayFront ? ' has-audio' : ''}`}
+        className={`card-face glass${swiping ? ' swiping' : ''}${flying ? ` flying flying-${flying}` : ''}${countdown != null ? ' auto-flipping' : ''}`}
         style={{
           transform: `translateX(${offsetX}px) rotate(${offsetX / 28}deg)`,
           opacity: flying ? 0 : 1,
@@ -271,9 +302,6 @@ export function StudyCardView({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
-        onClick={canReplayFront ? replayFrontAudio : undefined}
-        role={canReplayFront ? 'button' : undefined}
-        aria-label={canReplayFront ? '音声を再生' : undefined}
       >
         {!showAnswer && countdown != null && (
           <div
@@ -282,11 +310,6 @@ export function StudyCardView({
           >
             <span>{countdown}</span>
             <small>s</small>
-          </div>
-        )}
-        {canReplayFront && audioFailed && (
-          <div className="audio-hint" aria-live="polite">
-            タップで音声を再生
           </div>
         )}
         {showAnswer && swipeEnabled && (
@@ -331,6 +354,37 @@ export function StudyCardView({
           </>
         )}
       </div>
+
+      {(hasFrontAudio || (showAnswer && hasBackAudio)) && (
+        <div className="audio-bar">
+          {hasFrontAudio && (
+            <button
+              type="button"
+              className="btn btn-ghost audio-replay"
+              disabled={!playableFront || audioBusy}
+              onClick={() => replayAudio('front')}
+            >
+              表面の音声
+            </button>
+          )}
+          {showAnswer && hasBackAudio && (
+            <button
+              type="button"
+              className="btn btn-ghost audio-replay"
+              disabled={!playableBack || audioBusy}
+              onClick={() => replayAudio('back')}
+            >
+              裏面の音声
+            </button>
+          )}
+          {missingAudio && (
+            <span className="audio-missing">音声ファイルが見つかりません</span>
+          )}
+          {audioFailed && !missingAudio && (
+            <span className="audio-missing">再生に失敗 — もう一度タップ</span>
+          )}
+        </div>
+      )}
 
       {!showAnswer ? (
         <button type="button" className="btn btn-primary reveal-btn" onClick={reveal}>
