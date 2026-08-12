@@ -94,27 +94,42 @@ export function StudyCardView({
     [rendered.backSounds, blobMap, mediaReady],
   )
 
+  // Prefer question-side tags; if the template only puts audio on the answer
+  // side (common), still play it when the front face appears — not on flip.
+  const questionSounds = useMemo((): SoundResolve => {
+    if (frontSounds.status === 'loading' || backSounds.status === 'loading') {
+      return { status: 'loading' }
+    }
+    if (frontSounds.status === 'ready') return frontSounds
+    if (frontSounds.status === 'missing') return frontSounds
+    if (frontSounds.status === 'empty') {
+      if (backSounds.status === 'ready') return backSounds
+      if (backSounds.status === 'missing') return backSounds
+      return { status: 'empty' }
+    }
+    return frontSounds
+  }, [frontSounds, backSounds])
+
+  const playedBackOnQuestion =
+    frontSounds.status === 'empty' && questionSounds.status === 'ready'
+
   const [offsetX, setOffsetX] = useState(0)
   const [swiping, setSwiping] = useState(false)
   const [flying, setFlying] = useState<'left' | 'right' | null>(null)
   const [countdown, setCountdown] = useState<number | null>(null)
-  const [audioFailed, setAudioFailed] = useState(false)
-  const [audioBusy, setAudioBusy] = useState(false)
   const startX = useRef<number | null>(null)
   const offsetRef = useRef(0)
-  const playedFront = useRef(false)
+  const playedQuestion = useRef(false)
   const playedBack = useRef(false)
   const busyRef = useRef(false)
 
   useEffect(() => {
-    playedFront.current = false
+    playedQuestion.current = false
     playedBack.current = false
     busyRef.current = false
     setOffsetX(0)
     setSwiping(false)
     setFlying(null)
-    setAudioFailed(false)
-    setAudioBusy(false)
     offsetRef.current = 0
     stopAudioPlayback()
   }, [
@@ -124,49 +139,43 @@ export function StudyCardView({
     rendered.backSounds,
   ])
 
-  // Front audio: play when blobs are ready. Still play after reveal if we missed
-  // the question face (auto-flip / slow IndexedDB on iPad).
+  // Play as soon as the front face is up and media is ready — never after flip.
   useEffect(() => {
-    if (playedFront.current) return
-    if (frontSounds.status === 'loading') return
-    if (frontSounds.status === 'empty') {
-      playedFront.current = true
+    if (showAnswer) {
+      if (questionSounds.status !== 'loading') playedQuestion.current = true
       return
     }
-    if (frontSounds.status === 'missing') {
-      playedFront.current = true
-      setAudioFailed(true)
+    if (playedQuestion.current) return
+    if (questionSounds.status === 'loading') return
+    if (
+      questionSounds.status === 'empty' ||
+      questionSounds.status === 'missing'
+    ) {
+      playedQuestion.current = true
       return
     }
+
     const signal = { cancelled: false }
     void (async () => {
-      setAudioBusy(true)
-      const ok = await playAudioBlobs(frontSounds.blobs, signal)
+      const ok = await playAudioBlobs(questionSounds.blobs, signal)
       if (signal.cancelled) return
-      setAudioBusy(false)
       if (ok) {
-        playedFront.current = true
-        setAudioFailed(false)
-      } else {
-        setAudioFailed(true)
+        playedQuestion.current = true
+        if (playedBackOnQuestion) playedBack.current = true
       }
     })()
+
     return () => {
       signal.cancelled = true
-      stopAudioPlayback()
-      setAudioBusy(false)
+      if (!showAnswer) stopAudioPlayback()
     }
-  }, [frontSounds])
+  }, [questionSounds, showAnswer, playedBackOnQuestion])
 
-  // Answer-side audio only after the answer is shown.
+  // Answer-only audio after reveal (skip if we already used it as question audio).
   useEffect(() => {
     if (!showAnswer || playedBack.current) return
     if (backSounds.status === 'loading') return
-    if (backSounds.status === 'empty') {
-      playedBack.current = true
-      return
-    }
-    if (backSounds.status === 'missing') {
+    if (backSounds.status === 'empty' || backSounds.status === 'missing') {
       playedBack.current = true
       return
     }
@@ -195,6 +204,8 @@ export function StudyCardView({
     }, 200)
     const timer = window.setTimeout(() => {
       setCountdown(0)
+      stopAudioPlayback()
+      playedQuestion.current = true
       void unlockAudio()
       onReveal()
     }, seconds * 1000)
@@ -251,6 +262,8 @@ export function StudyCardView({
   }
 
   function reveal() {
+    stopAudioPlayback()
+    playedQuestion.current = true
     void unlockAudio()
     onReveal()
   }
@@ -261,34 +274,11 @@ export function StudyCardView({
     onRate(rating)
   }
 
-  function replayAudio(which: 'front' | 'back') {
-    const target = which === 'front' ? frontSounds : backSounds
-    if (target.status !== 'ready') return
-    // Unlock synchronously inside the tap — required on iOS / iPadOS.
-    void unlockAudio()
-    setAudioFailed(false)
-    setAudioBusy(true)
-    void (async () => {
-      const ok = await playAudioBlobs(target.blobs)
-      setAudioBusy(false)
-      if (!ok) setAudioFailed(true)
-      else if (which === 'front') playedFront.current = true
-      else playedBack.current = true
-    })()
-  }
-
   const progress = clamp01(Math.abs(offsetX) / SWIPE_THRESHOLD)
   const towardAgain = offsetX > 12
   const towardGood = offsetX < -12
   const againOpacity = towardAgain ? progress : 0
   const goodOpacity = towardGood ? progress : 0
-
-  const hasFrontAudio = rendered.frontSounds.length > 0
-  const hasBackAudio = rendered.backSounds.length > 0
-  const playableFront = frontSounds.status === 'ready'
-  const playableBack = backSounds.status === 'ready'
-  const missingAudio =
-    frontSounds.status === 'missing' || backSounds.status === 'missing'
 
   return (
     <div className="card-stage">
@@ -354,37 +344,6 @@ export function StudyCardView({
           </>
         )}
       </div>
-
-      {(hasFrontAudio || (showAnswer && hasBackAudio)) && (
-        <div className="audio-bar">
-          {hasFrontAudio && (
-            <button
-              type="button"
-              className="btn btn-ghost audio-replay"
-              disabled={!playableFront || audioBusy}
-              onClick={() => replayAudio('front')}
-            >
-              表面の音声
-            </button>
-          )}
-          {showAnswer && hasBackAudio && (
-            <button
-              type="button"
-              className="btn btn-ghost audio-replay"
-              disabled={!playableBack || audioBusy}
-              onClick={() => replayAudio('back')}
-            >
-              裏面の音声
-            </button>
-          )}
-          {missingAudio && (
-            <span className="audio-missing">音声ファイルが見つかりません</span>
-          )}
-          {audioFailed && !missingAudio && (
-            <span className="audio-missing">再生に失敗 — もう一度タップ</span>
-          )}
-        </div>
-      )}
 
       {!showAnswer ? (
         <button type="button" className="btn btn-primary reveal-btn" onClick={reveal}>

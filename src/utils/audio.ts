@@ -31,6 +31,30 @@ let activeSource: AudioBufferSourceNode | null = null
 let activeFinish: ((ok: boolean) => void) | null = null
 let htmlPlayer: HTMLAudioElement | null = null
 let htmlWaiter: ((ok: boolean) => void) | null = null
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null
+
+function tickSilence(ctx: AudioContext): void {
+  try {
+    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050)
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(ctx.destination)
+    source.start(0)
+  } catch {
+    // ignore
+  }
+}
+
+function startKeepAlive(ctx: AudioContext): void {
+  if (keepAliveTimer != null) return
+  // iOS may suspend the context between deck-tap and card media load.
+  // A periodic silent tick while studying keeps it runnable for front autoplay.
+  keepAliveTimer = setInterval(() => {
+    if (ctx.state === 'closed') return
+    if (ctx.state === 'suspended') void ctx.resume()
+    tickSilence(ctx)
+  }, 2000)
+}
 
 function getContext(): AudioContext {
   if (!audioCtx) {
@@ -59,11 +83,6 @@ function finishHtmlWaiter(ok: boolean): void {
 
 /** Call synchronously from a tap handler before any await. */
 export function unlockAudio(): Promise<boolean> {
-  if (unlocked && audioCtx && audioCtx.state === 'running') {
-    return Promise.resolve(true)
-  }
-  if (unlockPromise) return unlockPromise
-
   let ctx: AudioContext
   try {
     ctx = getContext()
@@ -71,26 +90,21 @@ export function unlockAudio(): Promise<boolean> {
     return Promise.resolve(false)
   }
 
-  // resume() must be kicked off inside the gesture call stack.
+  // Always invoke resume() in this call stack — required on iOS even when we
+  // think we are already unlocked (SPA navigation can suspend the context).
   const resume = ctx.resume()
+  tickSilence(ctx)
 
-  // 1-sample silent buffer — proves the graph is allowed to emit audio.
-  try {
-    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050)
-    const source = ctx.createBufferSource()
-    source.buffer = buffer
-    source.connect(ctx.destination)
-    source.start(0)
-  } catch {
-    // Non-fatal; resume() may still unlock.
+  if (unlocked && ctx.state === 'running') {
+    startKeepAlive(ctx)
+    return resume.then(() => true).catch(() => true)
   }
+  if (unlockPromise) return unlockPromise
 
   unlockPromise = resume
     .then(() => {
-      unlocked = ctx.state === 'running' || ctx.state === 'suspended'
-      // suspended can still become running on the next play; treat resume ok as unlock.
-      if (ctx.state === 'running') unlocked = true
       unlocked = true
+      startKeepAlive(ctx)
       return true
     })
     .catch(() => {
@@ -100,6 +114,7 @@ export function unlockAudio(): Promise<boolean> {
 
   return unlockPromise
 }
+
 
 export function isAudioUnlocked(): boolean {
   return unlocked
