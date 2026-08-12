@@ -7,22 +7,14 @@ import { collectDescendantIds } from './deckTree'
 export async function setDailyNewOverride(
   deckId: string,
   newCardsLimit: number,
-  /** When true (default), also apply to all descendant decks */
-  includeDescendants = true,
 ): Promise<void> {
   const date = todayKey()
-  const decks = await db.decks.toArray()
-  const ids = includeDescendants
-    ? collectDescendantIds(deckId, decks)
-    : [deckId]
-  await db.dailyOverrides.bulkPut(
-    ids.map((id) => ({
-      id: `${date}_${id}`,
-      date,
-      deckId: id,
-      newCardsLimit,
-    })),
-  )
+  await db.dailyOverrides.put({
+    id: `${date}_${deckId}`,
+    date,
+    deckId,
+    newCardsLimit,
+  })
 }
 
 export async function getDailyNewOverride(
@@ -44,18 +36,23 @@ export async function countFailedCards(
   const cutoff = daysAgoMs(days)
 
   const logs = await db.reviewLogs
-    .where('reviewedAt')
-    .aboveOrEqual(cutoff)
-    .filter(
-      (log) =>
-        log.rating === 1 &&
-        log.source === 'normal' &&
-        log.reviewedAt >= cutoff,
+    .where('[rating+source+reviewedAt]')
+    .between(
+      [1, 'normal', cutoff],
+      [1, 'normal', Date.now()],
+      true,
+      true,
     )
     .toArray()
 
-  const cards = await db.cards.where('deckId').anyOf([...deckIds]).toArray()
-  const cardSet = new Set(cards.map((c) => c.id))
+  const uniqueIds = [...new Set(logs.map((log) => log.cardId))]
+  const cards = await db.cards.bulkGet(uniqueIds)
+  const cardSet = new Set(
+    cards
+      .filter((card): card is Card => card != null)
+      .filter((card) => card.active === 1 && deckIds.has(card.deckId))
+      .map((card) => card.id),
+  )
 
   const againCounts = new Map<string, number>()
   for (const log of logs) {
@@ -79,11 +76,13 @@ export async function buildFailedCardsQueue(
 
 export async function recordCustomReview(
   cardId: string,
+  deckId: string,
   rating: RatingValue,
 ): Promise<void> {
   await db.reviewLogs.add({
     id: createId('rev'),
     cardId,
+    deckId,
     reviewedAt: Date.now(),
     rating,
     source: 'custom',

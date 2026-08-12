@@ -1,5 +1,8 @@
-import type { Card, Deck, DeckCounts } from '../db/schema'
-import { startOfTodayMs } from '../utils/dates'
+import type { Deck, DeckCounts } from '../db/schema'
+import {
+  countSelectableNewForStudyRoot,
+  type DailyNewContext,
+} from './dailyNew'
 
 export interface DeckNode {
   deck: Deck
@@ -43,6 +46,7 @@ export function buildDeckForest(decks: Deck[]): DeckNode[] {
 }
 
 export function collectDescendantIds(rootId: string, decks: Deck[]): string[] {
+  const byId = new Map(decks.map((deck) => [deck.id, deck]))
   const childrenMap = new Map<string, string[]>()
   for (const d of decks) {
     if (!d.parentId) continue
@@ -50,62 +54,39 @@ export function collectDescendantIds(rootId: string, decks: Deck[]): string[] {
     list.push(d.id)
     childrenMap.set(d.parentId, list)
   }
-  const result: string[] = []
-  const stack = [rootId]
-  while (stack.length) {
-    const id = stack.pop()!
-    result.push(id)
-    for (const child of childrenMap.get(id) ?? []) stack.push(child)
+  for (const list of childrenMap.values()) {
+    list.sort((leftId, rightId) => {
+      const left = byId.get(leftId)!
+      const right = byId.get(rightId)!
+      return left.order - right.order || left.name.localeCompare(right.name)
+    })
   }
+  const result: string[] = []
+  const visit = (deckId: string) => {
+    result.push(deckId)
+    for (const childId of childrenMap.get(deckId) ?? []) visit(childId)
+  }
+  if (byId.has(rootId)) visit(rootId)
   return result
-}
-
-export function isDueToday(card: Card, now = Date.now()): boolean {
-  if (card.state === 'new') return false
-  return card.due <= now
 }
 
 export function computeDeckCounts(
   decks: Deck[],
-  cards: Pick<Card, 'deckId' | 'state' | 'due'>[],
-  newLimits: Map<string, number>,
-  now = Date.now(),
+  directDue: Map<string, DeckCounts>,
+  availableNewByDeck: Map<string, number>,
+  dailyNew: DailyNewContext,
 ): Map<string, DeckCounts> {
-  const todayStart = startOfTodayMs(new Date(now))
-  void todayStart
-
-  const direct = new Map<string, DeckCounts>()
-  for (const d of decks) {
-    direct.set(d.id, { new: 0, review: 0, learning: 0 })
-  }
-
-  const newSeen = new Map<string, number>()
-
-  for (const card of cards) {
-    const counts = direct.get(card.deckId)
-    if (!counts) continue
-    if (card.state === 'new') {
-      const limit = newLimits.get(card.deckId) ?? 20
-      const seen = newSeen.get(card.deckId) ?? 0
-      if (seen < limit) {
-        counts.new += 1
-        newSeen.set(card.deckId, seen + 1)
-      }
-    } else if (card.state === 'learning' || card.state === 'relearning') {
-      if (card.due <= now) counts.learning += 1
-    } else if (card.state === 'review' && card.due <= now) {
-      counts.review += 1
-    }
-  }
-
-  // Aggregate to parents
-  const byId = new Map(decks.map((d) => [d.id, d]))
   const aggregated = new Map<string, DeckCounts>()
-  for (const d of decks) {
-    aggregated.set(d.id, { ...(direct.get(d.id) ?? { new: 0, review: 0, learning: 0 }) })
+  for (const deck of decks) {
+    const due = directDue.get(deck.id) ?? { new: 0, review: 0, learning: 0 }
+    aggregated.set(deck.id, {
+      new: countSelectableNewForStudyRoot(deck.id, availableNewByDeck, dailyNew),
+      review: due.review,
+      learning: due.learning,
+    })
   }
 
-  // Process deepest first
+  // Due cards aggregate to parents. New counts already use subtree-aware caps.
   const sorted = [...decks].sort(
     (a, b) => b.path.split('::').length - a.path.split('::').length,
   )
@@ -113,10 +94,8 @@ export function computeDeckCounts(
     if (!deck.parentId || !aggregated.has(deck.parentId)) continue
     const parent = aggregated.get(deck.parentId)!
     const child = aggregated.get(deck.id)!
-    parent.new += child.new
     parent.review += child.review
     parent.learning += child.learning
-    void byId
   }
 
   return aggregated

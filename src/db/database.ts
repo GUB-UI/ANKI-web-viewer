@@ -29,6 +29,42 @@ export class KiokuDB extends Dexie {
       settings: 'id',
       dailyOverrides: 'id, date, deckId, [date+deckId]',
     })
+
+    this.version(2)
+      .stores({
+        decks: 'id, parentId, path, order',
+        notes: 'id, noteType',
+        cards:
+          'id, noteId, deckId, active, state, due, [deckId+active+state], ' +
+          '[active+state+due], [deckId+active+state+due], ' +
+          '[deckId+active+state+sortOrder]',
+        reviewLogs:
+          'id, cardId, deckId, reviewedAt, rating, source, stateBefore, ' +
+          '[rating+source+reviewedAt], [stateBefore+reviewedAt], ' +
+          '[deckId+stateBefore+reviewedAt]',
+        media: 'id, filename',
+        settings: 'id',
+        dailyOverrides: 'id, date, deckId, [date+deckId]',
+      })
+      .upgrade(async (transaction) => {
+        let sortOrder = 0
+        await transaction
+          .table<Card>('cards')
+          .toCollection()
+          .modify((card) => {
+            card.active ??= 1
+            card.sortOrder ??= sortOrder++
+          })
+
+        const cards = await transaction.table<Card>('cards').toArray()
+        const deckByCard = new Map(cards.map((card) => [card.id, card.deckId]))
+        await transaction
+          .table<ReviewLog>('reviewLogs')
+          .toCollection()
+          .modify((log) => {
+            log.deckId ??= deckByCard.get(log.cardId)
+          })
+      })
   }
 }
 

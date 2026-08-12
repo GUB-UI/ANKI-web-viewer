@@ -10,7 +10,7 @@ export async function answerCard(
   source: ReviewSource,
 ): Promise<Card> {
   if (source === 'custom') {
-    await recordCustomReview(card.id, rating)
+    await recordCustomReview(card.id, card.deckId, rating)
     return card
   }
 
@@ -22,6 +22,7 @@ export async function answerCard(
     await db.reviewLogs.add({
       id: createId('rev'),
       cardId: card.id,
+      deckId: card.deckId,
       reviewedAt: Date.now(),
       rating,
       source: 'normal',

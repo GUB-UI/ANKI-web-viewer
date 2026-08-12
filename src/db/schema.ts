@@ -28,6 +28,10 @@ export interface Card {
   id: string
   noteId: string
   deckId: string
+  /** 1 when available for study; 0 for suspended/buried Anki cards */
+  active: 0 | 1
+  /** Stable new-card ordering imported from Anki's due position */
+  sortOrder: number
   /** Template ordinal (0 = forward, 1 = reverse, cloze index, etc.) */
   templateOrd: number
   cardType: 'basic' | 'basic-reverse' | 'cloze' | 'other'
@@ -49,6 +53,8 @@ export interface Card {
 export interface ReviewLog {
   id: string
   cardId: string
+  /** Denormalized so daily limits do not need full-card scans */
+  deckId?: string
   reviewedAt: number
   rating: RatingValue
   source: ReviewSource

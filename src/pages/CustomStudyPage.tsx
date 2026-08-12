@@ -84,7 +84,8 @@ export function CustomStudyPage() {
       <section className="section">
         <h2>今日の新規カード</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          デッキ設定は変えず、今日だけ枚数を上書きします。現在の有効値: {newLimit}
+          デッキ設定は変えず、このデッキと配下の合計上限を今日だけ上書きします。
+          現在の有効値: {newLimit}
         </p>
         <div className="field">
           <label htmlFor="new-limit">今日だけ</label>

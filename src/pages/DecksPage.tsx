@@ -6,11 +6,15 @@ import { DeckTree } from '../components/DeckTree'
 import { db, ensureSettings, requestPersistentStorage } from '../db/database'
 import type { Deck } from '../db/schema'
 import {
+  countActiveNewByDeck,
+  fetchDueCountsByDeck,
+} from '../study/cardQueries'
+import { loadDailyNewContext } from '../study/dailyNew'
+import {
   buildDeckForest,
   computeDeckCounts,
   totalDue,
 } from '../study/deckTree'
-import { getEffectiveNewLimit, getTodayTotals } from '../study/queue'
 
 export function DecksPage() {
   const navigate = useNavigate()
@@ -21,6 +25,7 @@ export function DecksPage() {
   const [today, setToday] = useState({ new: 0, review: 0 })
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [menuDeck, setMenuDeck] = useState<Deck | null>(null)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     void ensureSettings()
@@ -29,19 +34,36 @@ export function DecksPage() {
 
   useEffect(() => {
     const sub = liveQuery(async () => {
-      const [deckList, cards] = await Promise.all([
-        db.decks.toArray(),
-        db.cards.toArray(),
+      const deckList = await db.decks.toArray()
+      const deckIds = deckList.map((deck) => deck.id)
+      const dailyNew = await loadDailyNewContext(Date.now(), deckList)
+      const [dueByDeck, availableNewByDeck] = await Promise.all([
+        fetchDueCountsByDeck(deckIds),
+        countActiveNewByDeck(deckIds),
       ])
-      const limits = new Map<string, number>()
-      for (const d of deckList) {
-        limits.set(d.id, await getEffectiveNewLimit(d.id, d))
-      }
-      const c = computeDeckCounts(deckList, cards, limits)
-      const t = await getTodayTotals()
+      const c = computeDeckCounts(
+        deckList,
+        dueByDeck,
+        availableNewByDeck,
+        dailyNew,
+      )
+      const t = deckList
+        .filter((deck) => !deck.parentId)
+        .reduce(
+          (total, root) => {
+            const count = c.get(root.id)
+            if (count) {
+              total.new += count.new
+              total.review += count.review + count.learning
+            }
+            return total
+          },
+          { new: 0, review: 0 },
+        )
       return { deckList, c, t }
     }).subscribe({
       next: ({ deckList, c, t }) => {
+        setLoadError('')
         setDecks(deckList)
         setCounts(c)
         setToday(t)
@@ -51,7 +73,10 @@ export function DecksPage() {
           return new Set(deckList.filter((d) => !d.parentId).map((d) => d.id))
         })
       },
-      error: console.error,
+      error: (error) => {
+        console.error(error)
+        setLoadError('デッキを読み込めませんでした。アプリを再起動してください。')
+      },
     })
     return () => sub.unsubscribe()
   }, [])
@@ -97,7 +122,12 @@ export function DecksPage() {
         </div>
       </header>
 
-      {decks.length === 0 ? (
+      {loadError ? (
+        <div className="empty-state">
+          <h2 style={{ marginTop: 0, color: 'var(--danger)' }}>読み込みエラー</h2>
+          <p>{loadError}</p>
+        </div>
+      ) : decks.length === 0 ? (
         <div className="empty-state">
           <h2 style={{ marginTop: 0 }}>デッキがありません</h2>
           <p>Ankiの .apkg を読み込んで、このiPhoneだけで復習を続けましょう。</p>
