@@ -61,12 +61,13 @@ export function CustomStudyPage() {
   }
 
   async function startFailedReview() {
+    // Unlock must run before any await — iOS drops the gesture otherwise.
+    void unlockAudio()
     const cards = await buildFailedCardsQueue(deckId, days)
     sessionStorage.setItem(
       `customQueue:${deckId}`,
       JSON.stringify(cards.map((c) => c.id)),
     )
-    void unlockAudio()
     navigate(`/custom-review/${deckId}`)
   }
 

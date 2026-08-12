@@ -31,8 +31,9 @@ function resolveUrls(
 ): string[] | null {
   if (filenames.length === 0) return []
   const urls = filenames
-    .map((name) => urlMap.get(name))
+    .map((name) => urlMap.get(name) ?? urlMap.get(name.toLowerCase()))
     .filter((url): url is string => Boolean(url))
+  // null = media still loading (or missing). [] = no sounds on this side.
   return urls.length === filenames.length ? urls : null
 }
 
@@ -70,10 +71,20 @@ export function StudyCardView({
     [rendered.backHtml, urlMap],
   )
 
+  const frontSoundUrls = useMemo(
+    () => resolveUrls(rendered.frontSounds, urlMap),
+    [rendered.frontSounds, urlMap],
+  )
+  const backSoundUrls = useMemo(
+    () => resolveUrls(rendered.backSounds, urlMap),
+    [rendered.backSounds, urlMap],
+  )
+
   const [offsetX, setOffsetX] = useState(0)
   const [swiping, setSwiping] = useState(false)
   const [flying, setFlying] = useState<'left' | 'right' | null>(null)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [audioFailed, setAudioFailed] = useState(false)
   const startX = useRef<number | null>(null)
   const offsetRef = useRef(0)
   const playedFront = useRef(false)
@@ -87,7 +98,9 @@ export function StudyCardView({
     setOffsetX(0)
     setSwiping(false)
     setFlying(null)
+    setAudioFailed(false)
     offsetRef.current = 0
+    stopAudioPlayback()
   }, [
     rendered.frontHtml,
     rendered.backHtml,
@@ -95,49 +108,51 @@ export function StudyCardView({
     rendered.backSounds,
   ])
 
-  // Play the question the moment the card face is ready — not on reveal.
+  // Play the question the moment media URLs are ready — not on reveal.
   useEffect(() => {
     if (showAnswer || playedFront.current) return
-    const urls = resolveUrls(rendered.frontSounds, urlMap)
-    if (!urls) return
-    if (urls.length === 0) {
+    if (frontSoundUrls == null) return
+    if (frontSoundUrls.length === 0) {
       playedFront.current = true
       return
     }
     const signal = { cancelled: false }
     void (async () => {
-      await unlockAudio()
-      if (signal.cancelled || playedFront.current) return
-      const ok = await playAudioUrls(urls, signal)
-      if (ok && !signal.cancelled) playedFront.current = true
+      const ok = await playAudioUrls(frontSoundUrls, signal)
+      if (signal.cancelled) return
+      if (ok) {
+        playedFront.current = true
+        setAudioFailed(false)
+      } else {
+        // Allow a later tap (user gesture) to retry.
+        setAudioFailed(true)
+      }
     })()
     return () => {
       signal.cancelled = true
       stopAudioPlayback()
     }
-  }, [urlMap, showAnswer, rendered.frontSounds])
+  }, [frontSoundUrls, showAnswer])
 
   // Answer-side audio only after the answer is shown.
   useEffect(() => {
     if (!showAnswer || playedBack.current) return
-    const urls = resolveUrls(rendered.backSounds, urlMap)
-    if (!urls) return
-    if (urls.length === 0) {
+    if (backSoundUrls == null) return
+    if (backSoundUrls.length === 0) {
       playedBack.current = true
       return
     }
     const signal = { cancelled: false }
     void (async () => {
-      await unlockAudio()
-      if (signal.cancelled || playedBack.current) return
-      const ok = await playAudioUrls(urls, signal)
-      if (ok && !signal.cancelled) playedBack.current = true
+      const ok = await playAudioUrls(backSoundUrls, signal)
+      if (signal.cancelled) return
+      if (ok) playedBack.current = true
     })()
     return () => {
       signal.cancelled = true
       stopAudioPlayback()
     }
-  }, [urlMap, showAnswer, rendered.backSounds])
+  }, [backSoundUrls, showAnswer])
 
   // Auto-flip: reveal the answer after N seconds on the question face.
   useEffect(() => {
@@ -220,16 +235,34 @@ export function StudyCardView({
     onRate(rating)
   }
 
+  function replayFrontAudio(e: React.MouseEvent) {
+    // Only when the question face is showing — swipe uses the answer face.
+    if (showAnswer || !frontSoundUrls || frontSoundUrls.length === 0) return
+    // Ignore if the user is mid-swipe gesture machinery (answer only).
+    e.stopPropagation()
+    // Synchronous unlock inside the tap — this is the reliable iOS path when
+    // autoplay after navigation was blocked.
+    void unlockAudio()
+    setAudioFailed(false)
+    void (async () => {
+      const ok = await playAudioUrls(frontSoundUrls)
+      if (!ok) setAudioFailed(true)
+      else playedFront.current = true
+    })()
+  }
+
   const progress = clamp01(Math.abs(offsetX) / SWIPE_THRESHOLD)
   const towardAgain = offsetX > 12
   const towardGood = offsetX < -12
   const againOpacity = towardAgain ? progress : 0
   const goodOpacity = towardGood ? progress : 0
+  const canReplayFront =
+    !showAnswer && Boolean(frontSoundUrls && frontSoundUrls.length > 0)
 
   return (
     <div className="card-stage">
       <div
-        className={`card-face glass${swiping ? ' swiping' : ''}${flying ? ` flying flying-${flying}` : ''}${countdown != null ? ' auto-flipping' : ''}`}
+        className={`card-face glass${swiping ? ' swiping' : ''}${flying ? ` flying flying-${flying}` : ''}${countdown != null ? ' auto-flipping' : ''}${canReplayFront ? ' has-audio' : ''}`}
         style={{
           transform: `translateX(${offsetX}px) rotate(${offsetX / 28}deg)`,
           opacity: flying ? 0 : 1,
@@ -238,6 +271,9 @@ export function StudyCardView({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onClick={canReplayFront ? replayFrontAudio : undefined}
+        role={canReplayFront ? 'button' : undefined}
+        aria-label={canReplayFront ? '音声を再生' : undefined}
       >
         {!showAnswer && countdown != null && (
           <div
@@ -246,6 +282,11 @@ export function StudyCardView({
           >
             <span>{countdown}</span>
             <small>s</small>
+          </div>
+        )}
+        {canReplayFront && audioFailed && (
+          <div className="audio-hint" aria-live="polite">
+            タップで音声を再生
           </div>
         )}
         {showAnswer && swipeEnabled && (
