@@ -1,4 +1,11 @@
-import { useEffect, useState } from 'react'
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react'
 import { db, ensureSettings } from '../db/database'
 import type { ThemeMode } from '../db/schema'
 
@@ -11,7 +18,15 @@ function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
   return mode
 }
 
-export function useTheme() {
+interface ThemeContextValue {
+  mode: ThemeMode
+  resolved: 'light' | 'dark'
+  updateTheme(next: ThemeMode): Promise<void>
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null)
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<ThemeMode>('system')
   const [resolved, setResolved] = useState<'light' | 'dark'>(() =>
     resolveTheme('system'),
@@ -47,5 +62,15 @@ export function useTheme() {
     await db.settings.update('settings', { theme: next })
   }
 
-  return { mode, resolved, updateTheme }
+  return createElement(
+    ThemeContext.Provider,
+    { value: { mode, resolved, updateTheme } },
+    children,
+  )
+}
+
+export function useTheme(): ThemeContextValue {
+  const value = useContext(ThemeContext)
+  if (!value) throw new Error('useTheme must be used inside ThemeProvider')
+  return value
 }

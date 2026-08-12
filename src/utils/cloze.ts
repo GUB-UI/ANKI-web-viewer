@@ -1,6 +1,6 @@
 function clozeRe(): RegExp {
   // Fresh instance each call — shared /g RegExp lastIndex bugs otherwise
-  return /\{\{c(\d+)::([^}:]+?)(?:::[^}]+)?\}\}/g
+  return /\{\{c(\d+)::([\s\S]*?)(?:::(.*?))?\}\}/g
 }
 
 export function extractClozeIndices(text: string): number[] {
@@ -12,8 +12,8 @@ export function extractClozeIndices(text: string): number[] {
 }
 
 export function renderClozeFront(text: string, clozeIndex: number): string {
-  return text.replace(clozeRe(), (_full, index: string, answer: string) => {
-    if (Number(index) === clozeIndex) return '[...]'
+  return text.replace(clozeRe(), (_full, index: string, answer: string, hint?: string) => {
+    if (Number(index) === clozeIndex) return `[${hint?.trim() || '...'}]`
     return answer
   })
 }
@@ -21,16 +21,8 @@ export function renderClozeFront(text: string, clozeIndex: number): string {
 export function renderClozeBack(text: string, clozeIndex: number): string {
   return text.replace(clozeRe(), (_full, index: string, answer: string) => {
     if (Number(index) === clozeIndex) {
-      return `<span class="cloze-answer">${escapeHtml(answer)}</span>`
+      return `<span class="cloze-answer">${answer}</span>`
     }
-    return escapeHtml(answer)
+    return answer
   })
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }

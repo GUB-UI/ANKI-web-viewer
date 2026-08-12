@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react'
 import type { RatingValue } from '../db/schema'
 import { rewriteMediaUrls, type RenderedCard } from '../utils/cardRender'
 import { useMediaUrls } from '../hooks/useMediaUrls'
+import { extractMediaFilenames } from '../utils/mediaRefs'
+import { sanitizeCardHtml } from '../utils/sanitizeCardHtml'
 import { RatingButtons } from './RatingButtons'
 
 interface Props {
@@ -26,18 +28,19 @@ export function StudyCardView({
   const allMedia = useMemo(() => {
     const names = new Set<string>(rendered.sounds)
     const html = `${rendered.frontHtml}${rendered.backHtml}`
-    for (const m of html.matchAll(/src=["']([^"']+)["']/gi)) {
-      const src = m[1]!
-      if (!src.startsWith('http') && !src.startsWith('blob:') && !src.startsWith('data:')) {
-        names.add(src.split(/[?#]/)[0]!)
-      }
-    }
+    for (const filename of extractMediaFilenames(html)) names.add(filename)
     return [...names]
   }, [rendered])
 
   const urlMap = useMediaUrls(allMedia)
-  const front = rewriteMediaUrls(rendered.frontHtml, urlMap)
-  const back = rewriteMediaUrls(rendered.backHtml, urlMap)
+  const front = useMemo(
+    () => sanitizeCardHtml(rewriteMediaUrls(rendered.frontHtml, urlMap)),
+    [rendered.frontHtml, urlMap],
+  )
+  const back = useMemo(
+    () => sanitizeCardHtml(rewriteMediaUrls(rendered.backHtml, urlMap)),
+    [rendered.backHtml, urlMap],
+  )
 
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [swiping, setSwiping] = useState(false)

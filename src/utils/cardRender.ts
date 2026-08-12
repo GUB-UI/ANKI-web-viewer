@@ -72,13 +72,32 @@ export function rewriteMediaUrls(
   html: string,
   urlMap: Map<string, string>,
 ): string {
+  const resolve = (raw: string): string | undefined => {
+    const key = raw.trim().replace(/^\.\//, '').split(/[?#]/)[0]!
+    let decoded = key
+    try {
+      decoded = decodeURIComponent(key)
+    } catch {
+      // Keep malformed legacy filenames as-is.
+    }
+    return urlMap.get(key) ?? urlMap.get(decoded)
+  }
+
   return html.replace(
-    /(src=["'])([^"']+)(["'])/gi,
-    (_full, pre: string, src: string, post: string) => {
-      const key = src.split(/[?#]/)[0]!
-      const mapped = urlMap.get(key) ?? urlMap.get(decodeURIComponent(key))
-      if (mapped) return `${pre}${mapped}${post}`
-      return `${pre}${src}${post}`
+    /\b(src|srcset)\s*=\s*(["'])(.*?)\2/gi,
+    (_full, attribute: string, quote: string, value: string) => {
+      if (attribute.toLowerCase() === 'srcset') {
+        const rewritten = value
+          .split(',')
+          .map((entry) => {
+            const [url, ...descriptor] = entry.trim().split(/\s+/)
+            const mapped = url ? resolve(url) : undefined
+            return [mapped ?? url, ...descriptor].filter(Boolean).join(' ')
+          })
+          .join(', ')
+        return `${attribute}=${quote}${rewritten}${quote}`
+      }
+      return `${attribute}=${quote}${resolve(value) ?? value}${quote}`
     },
   )
 }

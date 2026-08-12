@@ -11,12 +11,14 @@ export function useMediaUrls(filenames: string[]): Map<string, string> {
 
     ;(async () => {
       const next = new Map<string, string>()
-      for (const name of filenames) {
-        const row = await db.media.where('filename').equals(name).first()
-        if (!row) continue
+      const unique = [...new Set(filenames)]
+      const rows = unique.length
+        ? await db.media.where('filename').anyOf(unique).toArray()
+        : []
+      for (const row of rows) {
         const url = URL.createObjectURL(row.blob)
         urls.push(url)
-        next.set(name, url)
+        next.set(row.filename, url)
       }
       if (!cancelled) setMap(next)
     })()

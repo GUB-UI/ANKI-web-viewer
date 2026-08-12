@@ -161,6 +161,16 @@ export function ImportPage() {
             <div className="label">Media</div>
             <div className="value">{result.media}</div>
           </div>
+          {result.warnings.length > 0 && (
+            <details className="error-box" style={{ marginTop: 12 }}>
+              <summary>一部の項目を取り込めませんでした ({result.warnings.length})</summary>
+              <ul>
+                {result.warnings.slice(0, 10).map((warning, index) => (
+                  <li key={`${index}-${warning}`}>{warning}</li>
+                ))}
+              </ul>
+            </details>
+          )}
           <button
             type="button"
             className="btn btn-primary btn-block"

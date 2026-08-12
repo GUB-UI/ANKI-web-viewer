@@ -7,6 +7,7 @@ import '@fontsource/outfit/600.css'
 import '@fontsource/outfit/700.css'
 import './styles/index.css'
 import App from './App'
+import { ThemeProvider } from './hooks/useTheme'
 
 registerSW({ immediate: true })
 
@@ -16,7 +17,9 @@ const Router = import.meta.env.BASE_URL === './' ? HashRouter : BrowserRouter
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Router>
-      <App />
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
     </Router>
   </StrictMode>,
 )
