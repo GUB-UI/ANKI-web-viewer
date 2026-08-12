@@ -113,7 +113,12 @@ export function SettingsPage() {
           />
         </div>
         <div className="row-between" style={{ marginTop: 12 }}>
-          <span>スワイプ操作</span>
+          <div>
+            <div>スワイプ操作</div>
+            <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.82rem', lineHeight: 1.6 }}>
+              左 = Good / 右 = Again
+            </p>
+          </div>
           <select
             value={settings.swipeEnabled ? 'on' : 'off'}
             onChange={(e) => void patch({ swipeEnabled: e.target.value === 'on' })}
@@ -122,6 +127,36 @@ export function SettingsPage() {
             <option value="off">OFF</option>
           </select>
         </div>
+        <div className="row-between" style={{ marginTop: 16 }}>
+          <div>
+            <div>自動で答えを表示</div>
+            <p className="muted" style={{ margin: '4px 0 0', fontSize: '0.82rem', lineHeight: 1.6 }}>
+              表面表示から N 秒後にめくる
+            </p>
+          </div>
+          <select
+            value={settings.autoFlipEnabled ? 'on' : 'off'}
+            onChange={(e) =>
+              void patch({ autoFlipEnabled: e.target.value === 'on' })
+            }
+          >
+            <option value="on">ON</option>
+            <option value="off">OFF</option>
+          </select>
+        </div>
+        {settings.autoFlipEnabled && (
+          <div className="field" style={{ marginTop: 14 }}>
+            <label htmlFor="auto-flip-seconds">自動めくり（秒）</label>
+            <NumberStepper
+              id="auto-flip-seconds"
+              aria-label="自動めくりまでの秒数"
+              value={settings.autoFlipSeconds}
+              min={1}
+              max={60}
+              onChange={(next) => void patch({ autoFlipSeconds: next })}
+            />
+          </div>
+        )}
       </section>
 
       <section className="section">

@@ -67,6 +67,8 @@ async function makeBackup(options?: {
         id: 'settings',
         newCardsPerDay: 20,
         swipeEnabled: true,
+        autoFlipEnabled: false,
+        autoFlipSeconds: 5,
         theme: 'system',
       },
       dailyOverrides: [],

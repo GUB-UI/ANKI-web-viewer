@@ -208,6 +208,19 @@ async function parseAndValidate(zip: JSZip): Promise<BackupPayload> {
   ) {
     fail('INVALID_DATA', '設定内容が不正です。')
   }
+  // Older backups omit auto-flip fields — fill defaults rather than reject.
+  if (typeof settings.autoFlipEnabled !== 'boolean') {
+    settings.autoFlipEnabled = false
+  }
+  if (
+    !Number.isFinite(settings.autoFlipSeconds) ||
+    settings.autoFlipSeconds < 1 ||
+    settings.autoFlipSeconds > 60
+  ) {
+    settings.autoFlipSeconds = 5
+  } else {
+    settings.autoFlipSeconds = Math.round(settings.autoFlipSeconds)
+  }
 
   const filenameSet = new Set<string>()
   const media: MediaFile[] = []

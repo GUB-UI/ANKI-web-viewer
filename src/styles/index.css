@@ -877,10 +877,12 @@ html[data-theme='dark'] .btn-primary {
 }
 
 .card-face {
+  position: relative;
   padding: 26px 22px 28px;
   border-radius: var(--radius-lg);
   animation: rise var(--dur) var(--ease) both;
-  transition: transform 0.24s var(--ease), opacity 0.24s var(--ease);
+  transition: transform 0.28s var(--ease), opacity 0.28s var(--ease);
+  overflow: hidden;
 }
 
 .card-face.swiping {
@@ -888,6 +890,64 @@ html[data-theme='dark'] .btn-primary {
   box-shadow:
     inset 0 1px 0 var(--glass-inner-top),
     var(--glass-cast-lifted);
+}
+
+.card-face.flying {
+  pointer-events: none;
+  transition:
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.22s ease;
+}
+
+.swipe-badge {
+  position: absolute;
+  top: 22px;
+  z-index: 2;
+  padding: 8px 14px;
+  border: 2px solid currentColor;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.swipe-badge.again {
+  right: 18px;
+  color: var(--rate-again);
+  transform: rotate(12deg);
+}
+
+.swipe-badge.good {
+  left: 18px;
+  color: var(--rate-good);
+  transform: rotate(-12deg);
+}
+
+.swipe-tint {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.swipe-tint.again {
+  background: var(--rate-again);
+}
+
+.swipe-tint.good {
+  background: var(--rate-good);
+}
+
+.reveal-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  opacity: 0.72;
 }
 
 .card-content {

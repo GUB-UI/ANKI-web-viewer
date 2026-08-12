@@ -74,14 +74,38 @@ export const DEFAULT_SETTINGS: AppSettings = {
   id: 'settings',
   newCardsPerDay: 20,
   swipeEnabled: true,
+  autoFlipEnabled: false,
+  autoFlipSeconds: 5,
   theme: 'system',
 }
 
 export async function ensureSettings(): Promise<AppSettings> {
   const existing = await db.settings.get('settings')
-  if (existing) return existing
-  await db.settings.put(DEFAULT_SETTINGS)
-  return DEFAULT_SETTINGS
+  if (!existing) {
+    await db.settings.put(DEFAULT_SETTINGS)
+    return DEFAULT_SETTINGS
+  }
+  const merged: AppSettings = {
+    ...DEFAULT_SETTINGS,
+    ...existing,
+    autoFlipEnabled: existing.autoFlipEnabled ?? DEFAULT_SETTINGS.autoFlipEnabled,
+    autoFlipSeconds: clampAutoFlipSeconds(
+      existing.autoFlipSeconds ?? DEFAULT_SETTINGS.autoFlipSeconds,
+    ),
+  }
+  if (
+    existing.autoFlipEnabled == null ||
+    existing.autoFlipSeconds == null ||
+    existing.autoFlipSeconds !== merged.autoFlipSeconds
+  ) {
+    await db.settings.put(merged)
+  }
+  return merged
+}
+
+function clampAutoFlipSeconds(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_SETTINGS.autoFlipSeconds
+  return Math.min(60, Math.max(1, Math.round(value)))
 }
 
 export async function requestPersistentStorage(): Promise<boolean> {

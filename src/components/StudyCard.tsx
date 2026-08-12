@@ -14,9 +14,12 @@ interface Props {
   previews: Record<RatingValue, { label: string }>
   onRate: (rating: RatingValue) => void
   swipeEnabled: boolean
+  autoFlipEnabled: boolean
+  autoFlipSeconds: number
 }
 
-const SWIPE_THRESHOLD = 90
+const SWIPE_THRESHOLD = 96
+const FLY_PX = 480
 
 function resolveUrls(
   filenames: string[],
@@ -29,6 +32,10 @@ function resolveUrls(
   return urls.length === filenames.length ? urls : null
 }
 
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
 export function StudyCardView({
   rendered,
   showAnswer,
@@ -36,6 +43,8 @@ export function StudyCardView({
   previews,
   onRate,
   swipeEnabled,
+  autoFlipEnabled,
+  autoFlipSeconds,
 }: Props) {
   const allMedia = useMemo(() => {
     const names = new Set<string>([
@@ -57,15 +66,23 @@ export function StudyCardView({
     [rendered.backHtml, urlMap],
   )
 
-  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [offsetX, setOffsetX] = useState(0)
   const [swiping, setSwiping] = useState(false)
-  const start = useRef<{ x: number; y: number } | null>(null)
+  const [flying, setFlying] = useState<'left' | 'right' | null>(null)
+  const startX = useRef<number | null>(null)
+  const offsetRef = useRef(0)
   const playedFront = useRef(false)
   const playedBack = useRef(false)
+  const busyRef = useRef(false)
 
   useEffect(() => {
     playedFront.current = false
     playedBack.current = false
+    busyRef.current = false
+    setOffsetX(0)
+    setSwiping(false)
+    setFlying(null)
+    offsetRef.current = 0
   }, [
     rendered.frontHtml,
     rendered.backHtml,
@@ -115,39 +132,62 @@ export function StudyCardView({
     }
   }, [urlMap, showAnswer, rendered.backSounds])
 
+  // Auto-flip: reveal the answer after N seconds on the question face.
+  useEffect(() => {
+    if (!autoFlipEnabled || showAnswer || flying) return
+    const ms = Math.max(1, autoFlipSeconds) * 1000
+    const timer = window.setTimeout(() => {
+      void unlockAudio()
+      onReveal()
+    }, ms)
+    return () => window.clearTimeout(timer)
+  }, [autoFlipEnabled, autoFlipSeconds, showAnswer, flying, onReveal, rendered])
+
   function onPointerDown(e: React.PointerEvent) {
-    if (!showAnswer || !swipeEnabled) return
-    start.current = { x: e.clientX, y: e.clientY }
+    if (!showAnswer || !swipeEnabled || flying || busyRef.current) return
+    startX.current = e.clientX
     setSwiping(true)
-    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (!start.current || !swiping) return
-    setOffset({
-      x: e.clientX - start.current.x,
-      y: e.clientY - start.current.y,
-    })
+    if (startX.current == null || !swiping) return
+    const next = e.clientX - startX.current
+    offsetRef.current = next
+    setOffsetX(next)
+  }
+
+  function finishSwipe(commit: boolean) {
+    const x = offsetRef.current
+    startX.current = null
+    setSwiping(false)
+
+    if (!commit || Math.abs(x) < SWIPE_THRESHOLD) {
+      offsetRef.current = 0
+      setOffsetX(0)
+      return
+    }
+
+    // 右 = Again, 左 = Good
+    const rating: RatingValue = x > 0 ? 1 : 3
+    const direction: 'left' | 'right' = x > 0 ? 'right' : 'left'
+    busyRef.current = true
+    setFlying(direction)
+    setOffsetX(direction === 'right' ? FLY_PX : -FLY_PX)
+    void unlockAudio()
+    window.setTimeout(() => {
+      onRate(rating)
+    }, 220)
   }
 
   function onPointerUp() {
-    if (!start.current || !swiping) return
-    const { x, y } = offset
-    const absX = Math.abs(x)
-    const absY = Math.abs(y)
-    let rating: RatingValue | null = null
-    if (absX > absY && absX > SWIPE_THRESHOLD) {
-      rating = x < 0 ? 1 : 3
-    } else if (absY > absX && absY > SWIPE_THRESHOLD) {
-      rating = y > 0 ? 2 : 4
-    }
-    start.current = null
-    setSwiping(false)
-    setOffset({ x: 0, y: 0 })
-    if (rating) {
-      void unlockAudio()
-      onRate(rating)
-    }
+    if (startX.current == null || !swiping) return
+    finishSwipe(true)
+  }
+
+  function onPointerCancel() {
+    if (startX.current == null) return
+    finishSwipe(false)
   }
 
   function reveal() {
@@ -156,23 +196,58 @@ export function StudyCardView({
   }
 
   function rate(rating: RatingValue) {
+    if (busyRef.current || flying) return
     void unlockAudio()
     onRate(rating)
   }
 
+  const progress = clamp01(Math.abs(offsetX) / SWIPE_THRESHOLD)
+  const towardAgain = offsetX > 12
+  const towardGood = offsetX < -12
+  const againOpacity = towardAgain ? progress : 0
+  const goodOpacity = towardGood ? progress : 0
+
   return (
     <div className="card-stage">
       <div
-        className={`card-face glass${swiping ? ' swiping' : ''}`}
+        className={`card-face glass${swiping ? ' swiping' : ''}${flying ? ` flying flying-${flying}` : ''}`}
         style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) rotate(${offset.x / 40}deg)`,
-          opacity: swiping ? 0.92 : 1,
+          transform: `translateX(${offsetX}px) rotate(${offsetX / 28}deg)`,
+          opacity: flying ? 0 : 1,
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={onPointerCancel}
       >
+        {showAnswer && swipeEnabled && (
+          <>
+            <div
+              className="swipe-badge again"
+              style={{ opacity: againOpacity }}
+              aria-hidden
+            >
+              Again
+            </div>
+            <div
+              className="swipe-badge good"
+              style={{ opacity: goodOpacity }}
+              aria-hidden
+            >
+              Good
+            </div>
+            <div
+              className="swipe-tint again"
+              style={{ opacity: againOpacity * 0.22 }}
+              aria-hidden
+            />
+            <div
+              className="swipe-tint good"
+              style={{ opacity: goodOpacity * 0.22 }}
+              aria-hidden
+            />
+          </>
+        )}
         <div
           className="card-content"
           dangerouslySetInnerHTML={{ __html: front }}
@@ -191,6 +266,9 @@ export function StudyCardView({
       {!showAnswer ? (
         <button type="button" className="btn btn-primary reveal-btn" onClick={reveal}>
           答えを見る
+          {autoFlipEnabled && (
+            <span className="reveal-hint">自動 {autoFlipSeconds}s</span>
+          )}
         </button>
       ) : (
         <RatingButtons previews={previews} onRate={rate} />

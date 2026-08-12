@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { StudyCardView } from '../components/StudyCard'
 import { db, ensureSettings } from '../db/database'
@@ -20,6 +20,8 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
   const [showAnswer, setShowAnswer] = useState(false)
   const [loading, setLoading] = useState(true)
   const [swipeEnabled, setSwipeEnabled] = useState(true)
+  const [autoFlipEnabled, setAutoFlipEnabled] = useState(false)
+  const [autoFlipSeconds, setAutoFlipSeconds] = useState(5)
   const [busy, setBusy] = useState(false)
   const [answered, setAnswered] = useState(0)
 
@@ -32,6 +34,8 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
       const settings = await ensureSettings()
       if (!alive) return
       setSwipeEnabled(settings.swipeEnabled)
+      setAutoFlipEnabled(settings.autoFlipEnabled)
+      setAutoFlipSeconds(settings.autoFlipSeconds)
 
       if (source === 'custom') {
         const raw = sessionStorage.getItem(`customQueue:${deckId}`)
@@ -96,6 +100,8 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
     return previewRatings(card)
   }, [card, source])
 
+  const reveal = useCallback(() => setShowAnswer(true), [])
+
   async function onRate(rating: RatingValue) {
     if (!card || busy) return
     setBusy(true)
@@ -113,7 +119,6 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
         setQueue((prev) => {
           const rest = prev.slice(index + 1).filter((c) => c.id !== updated.id)
           if (stillLearning) {
-            // Insert by due order among remaining
             const insertAt = rest.findIndex((c) => c.due > updated.due)
             if (insertAt === -1) rest.push(updated)
             else rest.splice(insertAt, 0, updated)
@@ -151,8 +156,6 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
         <Link to="/" className="icon-btn" aria-label="戻る">
           ←
         </Link>
-        {/* Plain study needs no title; the reinforcement mode does, since it
-            does not touch the schedule. */}
         <h1 className={source === 'custom' ? 'mode-chip' : 'sr-only'}>
           {source === 'custom' ? '補強復習' : '学習'}
         </h1>
@@ -198,10 +201,12 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
             key={card!.id + ':' + answered}
             rendered={rendered}
             showAnswer={showAnswer}
-            onReveal={() => setShowAnswer(true)}
+            onReveal={reveal}
             previews={previews}
             onRate={onRate}
             swipeEnabled={swipeEnabled && showAnswer}
+            autoFlipEnabled={autoFlipEnabled}
+            autoFlipSeconds={autoFlipSeconds}
           />
         </>
       ) : (

@@ -74,6 +74,10 @@ export interface AppSettings {
   id: 'settings'
   newCardsPerDay: number
   swipeEnabled: boolean
+  /** Automatically reveal the answer after autoFlipSeconds */
+  autoFlipEnabled: boolean
+  /** Seconds to wait on the question face before auto-reveal (1–60) */
+  autoFlipSeconds: number
   theme: ThemeMode
   lastBackupAt?: number
 }
