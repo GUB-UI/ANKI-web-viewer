@@ -22,12 +22,15 @@ export type RestoreErrorCode =
   | 'COMMIT_FAILED'
 
 export class RestoreError extends Error {
+  code: RestoreErrorCode
+
   constructor(
-    public code: RestoreErrorCode,
+    code: RestoreErrorCode,
     message: string,
   ) {
     super(message)
     this.name = 'RestoreError'
+    this.code = code
   }
 }
 
@@ -134,6 +137,7 @@ async function parseAndValidate(zip: JSZip): Promise<BackupPayload> {
     ...card,
     active: card.active === 0 ? 0 : 1,
     sortOrder: Number.isFinite(card.sortOrder) ? card.sortOrder : index,
+    learningSteps: Number.isFinite(card.learningSteps) ? card.learningSteps : 0,
   })) as Card[]
   const cardIds = uniqueIds(cards, 'cards.json')
   const deckByCard = new Map(cards.map((card) => [card.id, card.deckId]))
@@ -299,7 +303,7 @@ export async function restoreBackup(file: File | Blob): Promise<void> {
   try {
     let zip: JSZip
     try {
-      zip = await JSZip.loadAsync(file)
+      zip = await JSZip.loadAsync(new Uint8Array(await file.arrayBuffer()))
     } catch {
       fail('INVALID_ZIP', 'ZIPとして読み込めませんでした。')
     }

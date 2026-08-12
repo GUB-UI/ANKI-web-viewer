@@ -46,7 +46,7 @@ export async function openModernApkg(file: Blob): Promise<ModernAnkiSource> {
   const pkg = result.data
   const collection = (pkg as unknown as PackageInternals).databaseContents?.collection
   const crt = collection?.crt
-  if (!Number.isFinite(crt)) {
+  if (typeof crt !== 'number' || !Number.isFinite(crt)) {
     await pkg.cleanup()
     throw new Error('Ankiコレクションの作成日時を読み取れませんでした。')
   }

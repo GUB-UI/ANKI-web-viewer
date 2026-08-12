@@ -37,6 +37,7 @@ function makeCard(id: number, partial: Partial<Card>): Card {
     difficulty: 5,
     elapsedDays: 1,
     scheduledDays: 1,
+    learningSteps: 0,
     reps: 1,
     lapses: 0,
     ...partial,

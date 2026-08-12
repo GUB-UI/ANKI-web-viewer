@@ -50,6 +50,7 @@ function card(id: string, deckId: string): Card {
     difficulty: 0,
     elapsedDays: 0,
     scheduledDays: 0,
+    learningSteps: 0,
     reps: 1,
     lapses: 0,
   }
