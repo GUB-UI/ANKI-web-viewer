@@ -15,6 +15,7 @@ import {
   computeDeckCounts,
   totalDue,
 } from '../study/deckTree'
+import { unlockAudio } from '../utils/audio'
 
 export function DecksPage() {
   const navigate = useNavigate()
@@ -98,6 +99,7 @@ export function DecksPage() {
       setMenuDeck(deck)
       return
     }
+    void unlockAudio()
     navigate(`/study/${deck.id}`)
   }
 
@@ -173,7 +175,10 @@ export function DecksPage() {
           actions={[
             {
               label: '学習開始',
-              onClick: () => navigate(`/study/${menuDeck.id}`),
+              onClick: () => {
+                void unlockAudio()
+                navigate(`/study/${menuDeck.id}`)
+              },
             },
             {
               label: 'カスタム学習',

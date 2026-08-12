@@ -10,6 +10,7 @@ import {
   setDailyNewOverride,
 } from '../study/customStudy'
 import { getEffectiveNewLimit } from '../study/queue'
+import { unlockAudio } from '../utils/audio'
 
 export function CustomStudyPage() {
   const { deckId = '' } = useParams()
@@ -65,6 +66,7 @@ export function CustomStudyPage() {
       `customQueue:${deckId}`,
       JSON.stringify(cards.map((c) => c.id)),
     )
+    void unlockAudio()
     navigate(`/custom-review/${deckId}`)
   }
 

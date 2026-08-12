@@ -4,6 +4,7 @@ import { rewriteMediaUrls, type RenderedCard } from '../utils/cardRender'
 import { useMediaUrls } from '../hooks/useMediaUrls'
 import { extractMediaFilenames } from '../utils/mediaRefs'
 import { sanitizeCardHtml } from '../utils/sanitizeCardHtml'
+import { playAudioUrls, unlockAudio } from '../utils/audio'
 import { RatingButtons } from './RatingButtons'
 
 interface Props {
@@ -16,32 +17,6 @@ interface Props {
 }
 
 const SWIPE_THRESHOLD = 90
-
-/** Plays each URL in order. Returns false if the browser blocked autoplay. */
-async function playUrls(
-  urls: string[],
-  signal: { cancelled: boolean },
-): Promise<boolean> {
-  for (const url of urls) {
-    if (signal.cancelled) return true
-    const audio = new Audio(url)
-    try {
-      await audio.play()
-    } catch {
-      return false
-    }
-    await new Promise<void>((resolve) => {
-      const finish = () => resolve()
-      audio.addEventListener('ended', finish, { once: true })
-      audio.addEventListener('error', finish, { once: true })
-      if (signal.cancelled) {
-        audio.pause()
-        finish()
-      }
-    })
-  }
-  return true
-}
 
 function resolveUrls(
   filenames: string[],
@@ -98,31 +73,47 @@ export function StudyCardView({
     rendered.backSounds,
   ])
 
+  // Play the question the moment the card face is ready — not on reveal.
   useEffect(() => {
+    if (showAnswer || playedFront.current) return
+    const urls = resolveUrls(rendered.frontSounds, urlMap)
+    if (!urls) return
+    if (urls.length === 0) {
+      playedFront.current = true
+      return
+    }
     const signal = { cancelled: false }
-    const filenames = showAnswer ? rendered.backSounds : rendered.frontSounds
-    const flag = showAnswer ? playedBack : playedFront
-    if (flag.current) {
-      return () => {
-        signal.cancelled = true
-      }
-    }
-    const urls = resolveUrls(filenames, urlMap)
-    if (!urls || urls.length === 0) {
-      if (urls && urls.length === 0) flag.current = true
-      return () => {
-        signal.cancelled = true
-      }
-    }
-
-    void playUrls(urls, signal).then((ok) => {
-      if (ok && !signal.cancelled) flag.current = true
-    })
-
+    void (async () => {
+      await unlockAudio()
+      if (signal.cancelled || playedFront.current) return
+      const ok = await playAudioUrls(urls, signal)
+      if (ok && !signal.cancelled) playedFront.current = true
+    })()
     return () => {
       signal.cancelled = true
     }
-  }, [urlMap, showAnswer, rendered.frontSounds, rendered.backSounds])
+  }, [urlMap, showAnswer, rendered.frontSounds])
+
+  // Answer-side audio only after the answer is shown.
+  useEffect(() => {
+    if (!showAnswer || playedBack.current) return
+    const urls = resolveUrls(rendered.backSounds, urlMap)
+    if (!urls) return
+    if (urls.length === 0) {
+      playedBack.current = true
+      return
+    }
+    const signal = { cancelled: false }
+    void (async () => {
+      await unlockAudio()
+      if (signal.cancelled || playedBack.current) return
+      const ok = await playAudioUrls(urls, signal)
+      if (ok && !signal.cancelled) playedBack.current = true
+    })()
+    return () => {
+      signal.cancelled = true
+    }
+  }, [urlMap, showAnswer, rendered.backSounds])
 
   function onPointerDown(e: React.PointerEvent) {
     if (!showAnswer || !swipeEnabled) return
@@ -153,19 +144,20 @@ export function StudyCardView({
     start.current = null
     setSwiping(false)
     setOffset({ x: 0, y: 0 })
-    if (rating) onRate(rating)
+    if (rating) {
+      void unlockAudio()
+      onRate(rating)
+    }
   }
 
   function reveal() {
-    // A tap unlocks autoplay on iOS. If the question audio was blocked on
-    // mount, play it now before flipping — Anki plays front then back.
-    const frontUrls = resolveUrls(rendered.frontSounds, urlMap)
-    if (!playedFront.current && frontUrls && frontUrls.length > 0) {
-      playedFront.current = true
-      void playUrls(frontUrls, { cancelled: false }).finally(() => onReveal())
-      return
-    }
+    void unlockAudio()
     onReveal()
+  }
+
+  function rate(rating: RatingValue) {
+    void unlockAudio()
+    onRate(rating)
   }
 
   return (
@@ -201,7 +193,7 @@ export function StudyCardView({
           答えを見る
         </button>
       ) : (
-        <RatingButtons previews={previews} onRate={onRate} />
+        <RatingButtons previews={previews} onRate={rate} />
       )}
     </div>
   )

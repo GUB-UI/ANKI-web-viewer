@@ -35,6 +35,11 @@
   --bloom-vermilion: rgba(209, 71, 78, 0.16);
   --bloom-vermilion-soft: rgba(209, 71, 78, 0.1);
 
+  /* Anki study counts: new / learning / review */
+  --anki-new: #0a84ff;
+  --anki-learn: #ff3b30;
+  --anki-review: #34c759;
+
   /* rating ink — label colour only; glass stays clear */
   --rate-again: #d70015;
   --rate-hard: #b87a00;
@@ -66,12 +71,15 @@
   --radius-sm: 13px;
   --shell: 480px;
 
-  /* type */
-  --font-display: 'Hiragino Mincho ProN', 'Hiragino Mincho Pro', 'Yu Mincho',
-    YuMincho, 'Noto Serif JP', 'Times New Roman', serif;
-  --font-sans: 'Outfit', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
-    'Noto Sans JP', system-ui, sans-serif;
-  --font-numeric: 'Outfit', 'Hiragino Sans', system-ui, sans-serif;
+  /* type — Apple Developer / HIG stack (SF Pro via system on iPhone) */
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+    'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, 'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+    'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, 'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  --font-numeric: -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+    'Helvetica Neue', Helvetica, Arial, sans-serif;
 
   /* motion — quiet, never bouncy */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -120,6 +128,10 @@ html[data-theme='dark'] {
   --indigo-wash: rgba(147, 165, 255, 0.14);
   --vermilion: #f2868b;
   --vermilion-wash: rgba(242, 134, 139, 0.13);
+
+  --anki-new: #64d2ff;
+  --anki-learn: #ff6961;
+  --anki-review: #30d158;
 
   --rate-again: #ff6961;
   --rate-hard: #ffd60a;
@@ -328,9 +340,9 @@ html[data-theme='dark'] .glass-raised::after {
 }
 
 .display {
-  font-family: var(--font-display);
-  font-weight: 400;
-  letter-spacing: 0.02em;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.02em;
   line-height: 1.28;
 }
 
@@ -401,11 +413,11 @@ html[data-theme='dark'] .glass-raised::after {
 
 .page-header h1 {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.32rem;
-  font-weight: 400;
-  letter-spacing: 0.06em;
-  line-height: 1.6;
+  font-family: var(--font-sans);
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.4;
 }
 
 .header-actions {
@@ -423,10 +435,10 @@ html[data-theme='dark'] .glass-raised::after {
 
 .brand {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 2.5rem;
+  font-weight: 700;
+  font-size: 2.35rem;
   line-height: 1;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.03em;
 }
 
 .brand span {
@@ -434,9 +446,10 @@ html[data-theme='dark'] .glass-raised::after {
 }
 
 .brand-jp {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  letter-spacing: 0.42em;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.28em;
   color: var(--ink-soft);
 }
 
@@ -662,9 +675,10 @@ html[data-theme='dark'] .btn-primary {
 }
 
 .deck-name {
-  font-family: var(--font-display);
-  font-size: 1.06rem;
-  letter-spacing: 0.03em;
+  font-family: var(--font-sans);
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -785,10 +799,10 @@ html[data-theme='dark'] .btn-primary {
 }
 
 .empty-state h2 {
-  font-family: var(--font-display);
-  font-weight: 400;
+  font-family: var(--font-sans);
+  font-weight: 600;
   font-size: 1.28rem;
-  letter-spacing: 0.06em;
+  letter-spacing: -0.02em;
 }
 
 .empty-state p {
@@ -813,6 +827,28 @@ html[data-theme='dark'] .btn-primary {
   font-size: 0.74rem;
   letter-spacing: 0.1em;
   color: var(--ink-muted);
+}
+
+.study-counts {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.count-new {
+  color: var(--anki-new);
+}
+.count-learn {
+  color: var(--anki-learn);
+}
+.count-review {
+  color: var(--anki-review);
 }
 
 .progress-line {
@@ -855,10 +891,11 @@ html[data-theme='dark'] .btn-primary {
 }
 
 .card-content {
-  font-family: var(--font-display);
-  font-size: 1.42rem;
-  line-height: 1.85;
-  letter-spacing: 0.02em;
+  font-family: var(--font-sans);
+  font-size: 1.5rem;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
   word-break: break-word;
 }
 
@@ -988,10 +1025,10 @@ html[data-theme='dark'] .btn-primary {
 
 .done-panel h2 {
   margin: 0 0 10px;
-  font-family: var(--font-display);
-  font-weight: 400;
+  font-family: var(--font-sans);
+  font-weight: 700;
   font-size: 2rem;
-  letter-spacing: 0.16em;
+  letter-spacing: -0.03em;
 }
 
 .done-panel p {
@@ -1013,10 +1050,10 @@ html[data-theme='dark'] .btn-primary {
 
 .section h2 {
   margin: 10px 0 12px;
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  font-weight: 400;
-  letter-spacing: 0.08em;
+  font-family: var(--font-sans);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   text-transform: none;
   color: var(--ink);
 }
@@ -1207,9 +1244,10 @@ html[data-theme='dark'] .btn-primary {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink);
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: 1.02rem;
-  letter-spacing: 0.05em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   text-align: left;
   cursor: pointer;
   transition: background var(--dur) var(--ease);

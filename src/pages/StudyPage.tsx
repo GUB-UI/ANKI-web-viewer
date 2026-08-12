@@ -130,6 +130,18 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
   }
 
   const done = !loading && !card
+  const remaining = useMemo(() => {
+    const cards = source === 'custom' ? queue.slice(index) : queue
+    let neu = 0
+    let learning = 0
+    let review = 0
+    for (const item of cards) {
+      if (item.state === 'new') neu += 1
+      else if (item.state === 'learning' || item.state === 'relearning') learning += 1
+      else review += 1
+    }
+    return { new: neu, learning, review }
+  }, [queue, index, source])
   const totalHint = answered + queue.length
   const progress = totalHint ? answered / totalHint : 0
 
@@ -144,13 +156,16 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
         <h1 className={source === 'custom' ? 'mode-chip' : 'sr-only'}>
           {source === 'custom' ? '補強復習' : '学習'}
         </h1>
-        <div
-          className="muted numeric"
-          style={{ marginLeft: 'auto', fontSize: '0.8rem' }}
-        >
-          {answered}
-          {queue.length > 0 ? ` / 残${queue.length}` : ''}
-        </div>
+        {!done && (
+          <div
+            className="study-counts"
+            aria-label={`新規 ${remaining.new}、学習中 ${remaining.learning}、復習 ${remaining.review}`}
+          >
+            <span className="count-new">{remaining.new}</span>
+            <span className="count-learn">{remaining.learning}</span>
+            <span className="count-review">{remaining.review}</span>
+          </div>
+        )}
       </header>
 
       <div className="progress-line">
