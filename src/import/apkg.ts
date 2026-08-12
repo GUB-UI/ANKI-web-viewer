@@ -359,11 +359,12 @@ export async function importApkg(
       } else if (model?.templates[ord]) {
         const tmpl = model.templates[ord]!
         front = renderAnkiTemplate(tmpl.qfmt, note.fields)
-        const backFull = renderAnkiTemplate(tmpl.afmt, {
+        // Kioku keeps the question on screen above the answer, so {{FrontSide}}
+        // would render it a second time.
+        back = renderAnkiTemplate(tmpl.afmt, {
           ...note.fields,
-          FrontSide: front,
+          FrontSide: '',
         })
-        back = backFull
       }
 
       const id = createId('card')

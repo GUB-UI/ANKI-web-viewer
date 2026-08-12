@@ -46,13 +46,6 @@ export function StudyCardView({
   const [swiping, setSwiping] = useState(false)
   const start = useRef<{ x: number; y: number } | null>(null)
 
-  async function playSound(filename: string) {
-    const url = urlMap.get(filename)
-    if (!url) return
-    const audio = new Audio(url)
-    await audio.play().catch(() => undefined)
-  }
-
   function onPointerDown(e: React.PointerEvent) {
     if (!showAnswer || !swipeEnabled) return
     start.current = { x: e.clientX, y: e.clientY }
@@ -102,21 +95,6 @@ export function StudyCardView({
           className="card-content"
           dangerouslySetInnerHTML={{ __html: front }}
         />
-        {rendered.sounds.length > 0 && (
-          <div className="audio-row">
-            {rendered.sounds.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className="audio-btn"
-                aria-label="音声を再生"
-                onClick={() => playSound(s)}
-              >
-                ♪
-              </button>
-            ))}
-          </div>
-        )}
         {showAnswer && (
           <>
             <div className="answer-divider" />

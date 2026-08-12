@@ -26,6 +26,41 @@ function secondField(note: Note): string {
   return values[1] ?? values[0] ?? ''
 }
 
+/**
+ * Strips whitespace for comparison, keeping a map back to the source index.
+ * Templates reflow the markup they emit, so only the non-space characters are
+ * reliable when matching one rendering against another.
+ */
+function squeezeWithMap(html: string): { text: string; index: number[] } {
+  let text = ''
+  const index: number[] = []
+  for (let i = 0; i < html.length; i++) {
+    const ch = html[i]!
+    if (/\s/.test(ch)) continue
+    text += ch
+    index.push(i)
+  }
+  return { text, index }
+}
+
+/**
+ * Older imports baked {{FrontSide}} into the answer, and some templates repeat
+ * the question themselves. Drop that leading copy so the answer shows once.
+ */
+export function stripRepeatedFront(front: string, back: string): string {
+  const question = squeezeWithMap(front).text
+  if (!question) return back
+  const { text, index } = squeezeWithMap(back)
+  if (text.length <= question.length || !text.startsWith(question)) return back
+  const cut = index[question.length - 1]! + 1
+  return back.slice(cut)
+}
+
+/** Anki's `<hr id=answer>` is redundant: the answer already sits below a divider. */
+export function stripLeadingRule(html: string): string {
+  return html.replace(/^(?:\s|<br\s*\/?>)*(?:<hr[^>]*>(?:\s|<br\s*\/?>)*)+/i, '')
+}
+
 export function renderCardContent(
   card: Card,
   note: Note,
@@ -36,7 +71,7 @@ export function renderCardContent(
 
   if (card.front != null && card.back != null) {
     frontRaw = card.front
-    backRaw = card.back
+    backRaw = stripLeadingRule(stripRepeatedFront(card.front, card.back))
   } else if (card.cardType === 'cloze' && card.clozeIndex != null) {
     const text = fieldValue(note, 'Text', 'Front', ...note.fieldOrder)
     const extra = fieldValue(note, 'Back Extra', 'Extra')
