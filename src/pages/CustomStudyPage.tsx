@@ -36,7 +36,7 @@ export function CustomStudyPage() {
     return () => {
       alive = false
     }
-  }, [deckId])
+  }, [deckId, days])
 
   useEffect(() => {
     let alive = true

@@ -27,7 +27,7 @@ export function useMediaUrls(filenames: string[]): Map<string, string> {
       cancelled = true
       for (const u of urls) URL.revokeObjectURL(u)
     }
-  }, [filenames.join('|')])
+  }, [filenames])
 
   return map
 }
