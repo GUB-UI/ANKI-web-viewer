@@ -4,6 +4,7 @@ import type { Card, Deck, Note } from '../db/schema'
 import {
   countActiveNewByDeck,
   fetchDueCardsByDeck,
+  fetchDueCountsByDeck,
   fetchNewCardsByDeck,
 } from './cardQueries'
 
@@ -76,5 +77,27 @@ describe('indexed card queries', () => {
     const result = await fetchNewCardsByDeck([deck.id], new Map([[deck.id, 3]]))
     expect(result.get(deck.id)).toHaveLength(3)
     expect(result.get(deck.id)?.map((card) => card.sortOrder)).toEqual([0, 1, 2])
+  })
+
+  it('restores a future learning step within the session horizon', async () => {
+    const now = Date.now()
+    await db.cards.bulkPut([
+      makeCard(1, { state: 'learning', due: now + 10 * 60 * 1000 }),
+      makeCard(2, { state: 'learning', due: now + 60 * 60 * 1000 }),
+    ])
+
+    const result = await fetchDueCardsByDeck(
+      [deck.id],
+      now,
+      now + 25 * 60 * 1000,
+    )
+    expect(result.learning.map((card) => card.id)).toEqual(['c1'])
+
+    const counts = await fetchDueCountsByDeck(
+      [deck.id],
+      now,
+      now + 25 * 60 * 1000,
+    )
+    expect(counts.get(deck.id)?.learning).toBe(1)
   })
 })

@@ -28,6 +28,12 @@ test.describe('Kioku MVP smoke', () => {
 
     await expect(page.getByRole('button', { name: '答えを見る' })).toBeVisible()
     await page.getByRole('button', { name: '答えを見る' }).click()
+    await expect(page.locator('.rating-btn')).toHaveText([
+      /Hard/,
+      /Again/,
+      /Good/,
+      /Easy/,
+    ])
     const dueBefore = await page.locator('.rating-btn.good small').textContent()
     expect(dueBefore).toBeTruthy()
     await page.getByRole('button', { name: /Good/ }).click()
@@ -90,5 +96,26 @@ test.describe('Kioku MVP smoke', () => {
     await page.getByRole('link', { name: 'インポート' }).click()
     await page.locator('input[type="file"]').setInputFiles(apkg)
     await expect(page.getByText('Import完了')).toBeVisible({ timeout: 30000 })
+  })
+
+  test('auto-flips after the configured countdown', async ({ page }) => {
+    await page.goto('./')
+    await page.getByRole('link', { name: 'インポート' }).click()
+    await page.locator('input[type="file"]').setInputFiles(apkg)
+    await expect(page.getByText('Import完了')).toBeVisible({ timeout: 30000 })
+    await page.getByRole('button', { name: 'デッキを見る' }).click()
+
+    await page.getByRole('link', { name: '設定' }).click()
+    const autoFlipRow = page
+      .locator('.row-between')
+      .filter({ hasText: '自動で答えを表示' })
+    await autoFlipRow.locator('select').selectOption('on')
+    await page.locator('#auto-flip-seconds').fill('1')
+    await page.getByRole('link', { name: '戻る' }).click()
+
+    await page.getByRole('button', { name: 'メニュー' }).first().click()
+    await page.getByRole('button', { name: '学習開始' }).click()
+    await expect(page.locator('.auto-flip-countdown')).toBeVisible()
+    await expect(page.locator('.rating-dock')).toBeVisible({ timeout: 3000 })
   })
 })

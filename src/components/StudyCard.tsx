@@ -4,7 +4,11 @@ import { rewriteMediaUrls, type RenderedCard } from '../utils/cardRender'
 import { useMediaUrls } from '../hooks/useMediaUrls'
 import { extractMediaFilenames } from '../utils/mediaRefs'
 import { sanitizeCardHtml } from '../utils/sanitizeCardHtml'
-import { playAudioUrls, unlockAudio } from '../utils/audio'
+import {
+  playAudioUrls,
+  stopAudioPlayback,
+  unlockAudio,
+} from '../utils/audio'
 import { RatingButtons } from './RatingButtons'
 
 interface Props {
@@ -69,6 +73,7 @@ export function StudyCardView({
   const [offsetX, setOffsetX] = useState(0)
   const [swiping, setSwiping] = useState(false)
   const [flying, setFlying] = useState<'left' | 'right' | null>(null)
+  const [countdown, setCountdown] = useState<number | null>(null)
   const startX = useRef<number | null>(null)
   const offsetRef = useRef(0)
   const playedFront = useRef(false)
@@ -108,6 +113,7 @@ export function StudyCardView({
     })()
     return () => {
       signal.cancelled = true
+      stopAudioPlayback()
     }
   }, [urlMap, showAnswer, rendered.frontSounds])
 
@@ -129,18 +135,31 @@ export function StudyCardView({
     })()
     return () => {
       signal.cancelled = true
+      stopAudioPlayback()
     }
   }, [urlMap, showAnswer, rendered.backSounds])
 
   // Auto-flip: reveal the answer after N seconds on the question face.
   useEffect(() => {
-    if (!autoFlipEnabled || showAnswer || flying) return
-    const ms = Math.max(1, autoFlipSeconds) * 1000
+    if (!autoFlipEnabled || showAnswer || flying) {
+      setCountdown(null)
+      return
+    }
+    const seconds = Math.max(1, autoFlipSeconds)
+    const deadline = Date.now() + seconds * 1000
+    setCountdown(seconds)
+    const ticker = window.setInterval(() => {
+      setCountdown(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)))
+    }, 200)
     const timer = window.setTimeout(() => {
+      setCountdown(0)
       void unlockAudio()
       onReveal()
-    }, ms)
-    return () => window.clearTimeout(timer)
+    }, seconds * 1000)
+    return () => {
+      window.clearInterval(ticker)
+      window.clearTimeout(timer)
+    }
   }, [autoFlipEnabled, autoFlipSeconds, showAnswer, flying, onReveal, rendered])
 
   function onPointerDown(e: React.PointerEvent) {
@@ -210,7 +229,7 @@ export function StudyCardView({
   return (
     <div className="card-stage">
       <div
-        className={`card-face glass${swiping ? ' swiping' : ''}${flying ? ` flying flying-${flying}` : ''}`}
+        className={`card-face glass${swiping ? ' swiping' : ''}${flying ? ` flying flying-${flying}` : ''}${countdown != null ? ' auto-flipping' : ''}`}
         style={{
           transform: `translateX(${offsetX}px) rotate(${offsetX / 28}deg)`,
           opacity: flying ? 0 : 1,
@@ -220,6 +239,15 @@ export function StudyCardView({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
+        {!showAnswer && countdown != null && (
+          <div
+            className="auto-flip-countdown"
+            aria-label={`自動めくりまで ${countdown} 秒`}
+          >
+            <span>{countdown}</span>
+            <small>s</small>
+          </div>
+        )}
         {showAnswer && swipeEnabled && (
           <>
             <div
@@ -266,9 +294,6 @@ export function StudyCardView({
       {!showAnswer ? (
         <button type="button" className="btn btn-primary reveal-btn" onClick={reveal}>
           答えを見る
-          {autoFlipEnabled && (
-            <span className="reveal-hint">自動 {autoFlipSeconds}s</span>
-          )}
         </button>
       ) : (
         <RatingButtons previews={previews} onRate={rate} />

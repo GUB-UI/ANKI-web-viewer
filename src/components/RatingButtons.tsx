@@ -7,7 +7,7 @@ interface Props {
   disabled?: boolean
 }
 
-const ORDER: RatingValue[] = [1, 2, 3, 4]
+const ORDER: RatingValue[] = [2, 1, 3, 4]
 const CLASS: Record<RatingValue, string> = {
   1: 'again',
   2: 'hard',

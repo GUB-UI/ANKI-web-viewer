@@ -15,6 +15,7 @@ import {
   computeDeckCounts,
   totalDue,
 } from '../study/deckTree'
+import { LEARNING_RESTORE_WINDOW_MS } from '../study/queue'
 import { unlockAudio } from '../utils/audio'
 
 export function DecksPage() {
@@ -37,9 +38,14 @@ export function DecksPage() {
     const sub = liveQuery(async () => {
       const deckList = await db.decks.toArray()
       const deckIds = deckList.map((deck) => deck.id)
-      const dailyNew = await loadDailyNewContext(Date.now(), deckList)
+      const now = Date.now()
+      const dailyNew = await loadDailyNewContext(now, deckList)
       const [dueByDeck, availableNewByDeck] = await Promise.all([
-        fetchDueCountsByDeck(deckIds),
+        fetchDueCountsByDeck(
+          deckIds,
+          now,
+          now + LEARNING_RESTORE_WINDOW_MS,
+        ),
         countActiveNewByDeck(deckIds),
       ])
       const c = computeDeckCounts(

@@ -5,11 +5,8 @@ import { db, ensureSettings } from '../db/database'
 import type { Card, Note, RatingValue, ReviewSource } from '../db/schema'
 import { previewRatings } from '../scheduler/fsrs'
 import { renderCardContent } from '../utils/cardRender'
-import { buildStudyQueue } from '../study/queue'
+import { buildStudyQueue, LEARNING_RESTORE_WINDOW_MS } from '../study/queue'
 import { answerCard } from '../study/review'
-
-/** Re-queue learning cards due within this window in the same session */
-const LEARNING_REQUEUE_MS = 25 * 60 * 1000
 
 export function StudyPage({ source = 'normal' as ReviewSource }) {
   const { deckId = '' } = useParams()
@@ -114,7 +111,7 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
         const now = Date.now()
         const stillLearning =
           (updated.state === 'learning' || updated.state === 'relearning') &&
-          updated.due <= now + LEARNING_REQUEUE_MS
+          updated.due <= now + LEARNING_RESTORE_WINDOW_MS
 
         setQueue((prev) => {
           const rest = prev.slice(index + 1).filter((c) => c.id !== updated.id)

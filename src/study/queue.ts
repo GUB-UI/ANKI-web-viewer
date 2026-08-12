@@ -14,6 +14,9 @@ import {
 } from './dailyNew'
 import { computeDeckCounts } from './deckTree'
 
+/** Keep near-term learning steps available when a study session is reopened. */
+export const LEARNING_RESTORE_WINDOW_MS = 25 * 60 * 1000
+
 export async function getEffectiveNewLimit(deckId: string, deck?: Deck): Promise<number> {
   const d = deck ?? (await db.decks.get(deckId))
   const settings = await ensureSettings()
@@ -37,7 +40,7 @@ export async function buildStudyQueue(rootDeckId: string): Promise<{
   const now = Date.now()
 
   const [{ learning, review }, newByDeck] = await Promise.all([
-    fetchDueCardsByDeck(deckIds, now),
+    fetchDueCardsByDeck(deckIds, now, now + LEARNING_RESTORE_WINDOW_MS),
     fetchNewCardsByDeck(deckIds, dailyNew.remainingByDeck),
   ])
   const newCards = selectNewCardsForStudyRoot(rootDeckId, newByDeck, dailyNew)
@@ -53,7 +56,7 @@ export async function getTodayTotals(): Promise<{ new: number; review: number }>
   const deckIds = decks.map((deck) => deck.id)
   const dailyNew = await loadDailyNewContext(now, decks)
   const [dueByDeck, availableNewByDeck] = await Promise.all([
-    fetchDueCountsByDeck(deckIds, now),
+    fetchDueCountsByDeck(deckIds, now, now + LEARNING_RESTORE_WINDOW_MS),
     countActiveNewByDeck(deckIds),
   ])
   const counts = computeDeckCounts(decks, dueByDeck, availableNewByDeck, dailyNew)

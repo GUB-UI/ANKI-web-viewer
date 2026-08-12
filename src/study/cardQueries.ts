@@ -2,8 +2,6 @@ import Dexie from 'dexie'
 import { db } from '../db/database'
 import type { Card, CardState, DeckCounts } from '../db/schema'
 
-const DUE_STATES: CardState[] = ['learning', 'relearning', 'review']
-
 function dueRange(deckId: string, state: CardState, now: number) {
   return db.cards
     .where('[deckId+active+state+due]')
@@ -18,11 +16,14 @@ function dueRange(deckId: string, state: CardState, now: number) {
 export async function fetchDueCardsByDeck(
   deckIds: string[],
   now = Date.now(),
+  learningHorizon = now,
 ): Promise<{ learning: Card[]; review: Card[] }> {
   const rows = await Promise.all(
-    deckIds.flatMap((deckId) =>
-      DUE_STATES.map((state) => dueRange(deckId, state, now).toArray()),
-    ),
+    deckIds.flatMap((deckId) => [
+      dueRange(deckId, 'learning', learningHorizon).toArray(),
+      dueRange(deckId, 'relearning', learningHorizon).toArray(),
+      dueRange(deckId, 'review', now).toArray(),
+    ]),
   )
   const cards = rows.flat()
   const learning = cards
@@ -37,13 +38,14 @@ export async function fetchDueCardsByDeck(
 export async function fetchDueCountsByDeck(
   deckIds: string[],
   now = Date.now(),
+  learningHorizon = now,
 ): Promise<Map<string, DeckCounts>> {
   const result = new Map<string, DeckCounts>()
   await Promise.all(
     deckIds.map(async (deckId) => {
       const [learning, relearning, review] = await Promise.all([
-        dueRange(deckId, 'learning', now).count(),
-        dueRange(deckId, 'relearning', now).count(),
+        dueRange(deckId, 'learning', learningHorizon).count(),
+        dueRange(deckId, 'relearning', learningHorizon).count(),
         dueRange(deckId, 'review', now).count(),
       ])
       result.set(deckId, {
