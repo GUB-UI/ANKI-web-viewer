@@ -143,6 +143,10 @@ export function fromAnkiScheduling(opts: {
   lapses: number
   /** Collection creation time (unix seconds) — used for review due days */
   crt?: number
+  /** Existing Anki FSRS memory, when present in cards.data */
+  stability?: number
+  difficulty?: number
+  lastReviewTime?: number
   now?: Date
 }): ReturnType<typeof applyFsrsDefaults> {
   const now = opts.now ?? new Date()
@@ -163,30 +167,34 @@ export function fromAnkiScheduling(opts: {
       opts.due > 1_000_000_000
         ? opts.due * 1000
         : opts.crt != null
-          ? (opts.crt + opts.due) * 86400000
+          ? opts.crt * 1000 + opts.due * 86400000
           : nowMs
     return {
       ...base,
-      state: opts.type === 3 || opts.queue === 3 ? 'relearning' : 'learning',
+      state: opts.type === 3 ? 'relearning' : 'learning',
       due: dueMs,
-      lastReview: nowMs,
+      stability: opts.stability ?? base.stability,
+      difficulty: opts.difficulty ?? base.difficulty,
+      lastReview: opts.lastReviewTime ? opts.lastReviewTime * 1000 : nowMs,
     }
   }
 
   // Review: due is days since collection creation; ivl is days
   const intervalDays = Math.max(1, opts.ivl || 1)
-  const stability = Math.max(0.1, intervalDays)
+  const stability = Math.max(0.1, opts.stability ?? intervalDays)
   const dueMs =
-    opts.crt != null ? (opts.crt + opts.due) * 86400000 : nowMs
+    opts.crt != null ? opts.crt * 1000 + opts.due * 86400000 : nowMs
   return {
     ...base,
     state: 'review',
     due: dueMs,
     stability,
-    difficulty: 5,
+    difficulty: opts.difficulty ?? 5,
     scheduledDays: intervalDays,
     reps: opts.reps,
     lapses: opts.lapses,
-    lastReview: dueMs - intervalDays * 86400000,
+    lastReview: opts.lastReviewTime
+      ? opts.lastReviewTime * 1000
+      : dueMs - intervalDays * 86400000,
   }
 }

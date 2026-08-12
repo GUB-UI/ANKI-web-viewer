@@ -53,6 +53,8 @@ export interface AnkiDeckInfo {
   id: string
   name: string
   newPerDay: number
+  configId: string
+  newToday: number
 }
 
 export function parseModels(modelsJson: string): Map<string, AnkiModel> {
@@ -102,6 +104,8 @@ export function parseDecks(decksJson: string): Map<string, AnkiDeckInfo> {
       id: String(d.id ?? id),
       name: d.name,
       newPerDay: 20,
+      configId: String(d.conf ?? 1),
+      newToday: Math.max(0, d.newToday?.[1] ?? 0),
     })
   }
   return map
@@ -132,26 +136,35 @@ export function renderAnkiTemplate(
   fields: Record<string, string>,
 ): string {
   let out = template
-  // {{#Field}}...{{/Field}} conditionals
-  out = out.replace(
-    /\{\{#([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g,
-    (_m, name: string, inner: string) => {
-      const val = fields[name.trim()] ?? ''
-      return val.trim() ? inner : ''
-    },
-  )
-  out = out.replace(/\{\{\^([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_m, name, inner) => {
-    const val = fields[name.trim()] ?? ''
-    return val.trim() ? '' : inner
-  })
-  out = out.replace(/\{\{([^}#/^]+)\}\}/g, (_m, name: string) => {
-    const key = name.trim().replace(/^text:/, '')
-    if (key === 'FrontSide') return ''
-    return fields[key] ?? ''
-  })
-  // strip remaining cloze syntax helpers like {{cloze:Text}} — handled elsewhere
-  out = out.replace(/\{\{cloze:([^}]+)\}\}/gi, (_m, name: string) => {
-    return fields[name.trim()] ?? ''
+
+  // Resolve nested conditionals from the inside out.
+  const conditional =
+    /\{\{([#^])\s*([^}]+?)\s*\}\}((?:(?!\{\{[#^]).)*?)\{\{\/\s*\2\s*\}\}/gs
+  for (let i = 0; i < 20 && conditional.test(out); i++) {
+    conditional.lastIndex = 0
+    out = out.replace(
+      conditional,
+      (_match, mode: string, name: string, inner: string) => {
+        const hasValue = Boolean(fields[name.trim()]?.trim())
+        return mode === '#' ? (hasValue ? inner : '') : hasValue ? '' : inner
+      },
+    )
+  }
+
+  out = out.replace(/\{\{([^{}]+)\}\}/g, (_match, expression: string) => {
+    const token = expression.trim()
+    if (token.startsWith('#') || token.startsWith('^') || token.startsWith('/')) {
+      return ''
+    }
+    const separator = token.indexOf(':')
+    const filter = separator >= 0 ? token.slice(0, separator).toLowerCase() : ''
+    const key = separator >= 0 ? token.slice(separator + 1).trim() : token
+    const value = fields[key] ?? ''
+    if (filter === 'text') {
+      return value.replace(/<[^>]*>/g, '')
+    }
+    // cloze/type/hint filters still need their source field in Kioku's basic renderer.
+    return value
   })
   return out
 }
