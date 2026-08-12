@@ -35,8 +35,11 @@
   --bloom-vermilion: rgba(209, 71, 78, 0.16);
   --bloom-vermilion-soft: rgba(209, 71, 78, 0.1);
 
-  /* system semantics */
-  --sys-red: #d70015;
+  /* rating ink — label colour only; glass stays clear */
+  --rate-again: #d70015;
+  --rate-hard: #b87a00;
+  --rate-good: #1f8a4c;
+  --rate-easy: #0071e3;
   --on-accent: #ffffff;
   --control-fill: rgba(19, 26, 36, 0.05);
   --control-fill-active: rgba(19, 26, 36, 0.09);
@@ -118,7 +121,10 @@ html[data-theme='dark'] {
   --vermilion: #f2868b;
   --vermilion-wash: rgba(242, 134, 139, 0.13);
 
-  --sys-red: #ff6961;
+  --rate-again: #ff6961;
+  --rate-hard: #ffd60a;
+  --rate-good: #32d74b;
+  --rate-easy: #64d2ff;
   --on-accent: #0d121b;
   --control-fill: rgba(233, 240, 252, 0.07);
   --control-fill-active: rgba(233, 240, 252, 0.13);
@@ -924,12 +930,11 @@ html[data-theme='dark'] .btn-primary {
 }
 
 /*
- * Apple's guidance: glass carries no inherent color, and tinting every control
- * means nothing stands out. So the dock is the only glass layer, the four
- * buttons stay monochrome, and colour is spent on one primary action (Good)
- * plus the Again label, which reports a state.
+ * Clear glass labels: no fill tint. Colour lives on the text only —
+ * Again / Hard / Good / Easy → red / yellow / green / blue.
  */
 .rating-btn {
+  --tint: var(--ink);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -939,17 +944,17 @@ html[data-theme='dark'] .btn-primary {
   padding: 10px 4px;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--control-fill);
-  color: var(--ink);
+  background: transparent;
+  color: var(--tint);
   font-size: 0.9rem;
   letter-spacing: 0.03em;
   cursor: pointer;
-  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
 
 .rating-btn:active {
   transform: scale(0.96);
-  background: var(--control-fill-active);
+  opacity: 0.72;
 }
 
 .rating-btn small {
@@ -957,38 +962,20 @@ html[data-theme='dark'] .btn-primary {
   font-variant-numeric: tabular-nums;
   font-size: 0.7rem;
   letter-spacing: 0.04em;
-  color: var(--ink-muted);
+  color: color-mix(in srgb, var(--tint) 55%, transparent);
 }
 
 .rating-btn.again {
-  color: var(--sys-red);
+  --tint: var(--rate-again);
 }
-
-.rating-btn.again small {
-  color: color-mix(in srgb, var(--sys-red) 45%, var(--ink-muted));
+.rating-btn.hard {
+  --tint: var(--rate-hard);
 }
-
-/* prominent: the default answer gets the accent as a filled background */
 .rating-btn.good {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--indigo) 92%, transparent),
-    color-mix(in srgb, var(--indigo) 76%, transparent)
-  );
-  color: var(--on-accent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  --tint: var(--rate-good);
 }
-
-.rating-btn.good small {
-  color: color-mix(in srgb, var(--on-accent) 72%, transparent);
-}
-
-.rating-btn.good:active {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--indigo) 100%, transparent),
-    color-mix(in srgb, var(--indigo) 84%, transparent)
-  );
+.rating-btn.easy {
+  --tint: var(--rate-easy);
 }
 
 .done-panel {

@@ -90,4 +90,16 @@ describe('renderCardContent', () => {
     expect(rendered.backHtml).toBe('ある程度まで増える')
     expect(rendered.deckPathParts).toEqual(['英語', 'ターゲット'])
   })
+
+  it('keeps front and back [sound:] tags separate for autoplay', () => {
+    const card = makeCard(
+      'extent[sound:front.mp3]',
+      'extent[sound:front.mp3]<hr id=answer>ある程度[sound:back.mp3]',
+    )
+    const rendered = renderCardContent(card, makeNote(), '英語')
+    expect(rendered.frontHtml).toBe('extent')
+    expect(rendered.backHtml).toBe('ある程度')
+    expect(rendered.frontSounds).toEqual(['front.mp3'])
+    expect(rendered.backSounds).toEqual(['back.mp3'])
+  })
 })

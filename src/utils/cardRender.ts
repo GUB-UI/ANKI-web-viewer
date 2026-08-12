@@ -5,7 +5,10 @@ import { replaceSoundTags } from './mediaRefs'
 export interface RenderedCard {
   frontHtml: string
   backHtml: string
-  sounds: string[]
+  /** [sound:] tags from the question side — play when the card appears */
+  frontSounds: string[]
+  /** [sound:] tags from the answer side — play when the answer is revealed */
+  backSounds: string[]
   deckPathParts: string[]
 }
 
@@ -92,12 +95,12 @@ export function renderCardContent(
 
   const front = replaceSoundTags(frontRaw)
   const back = replaceSoundTags(backRaw)
-  const sounds = [...new Set([...front.sounds, ...back.sounds])]
 
   return {
     frontHtml: front.html,
     backHtml: back.html,
-    sounds,
+    frontSounds: [...new Set(front.sounds)],
+    backSounds: [...new Set(back.sounds)],
     deckPathParts: deckPath.split('::').filter(Boolean),
   }
 }
