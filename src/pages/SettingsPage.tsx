@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { downloadBlob, exportBackup } from '../backup/exportBackup'
 import { restoreBackup } from '../backup/importBackup'
+import { NumberStepper } from '../components/NumberStepper'
 import { clearAllData, db, ensureSettings } from '../db/database'
 import type { AppSettings, ThemeMode } from '../db/schema'
 import { useTheme } from '../hooks/useTheme'
@@ -102,14 +103,13 @@ export function SettingsPage() {
         <h2>学習</h2>
         <div className="field">
           <label htmlFor="new-cards">1日の新規カード（デフォルト）</label>
-          <input
+          <NumberStepper
             id="new-cards"
-            type="number"
-            min={0}
+            aria-label="1日の新規カード（デフォルト）"
             value={settings.newCardsPerDay}
-            onChange={(e) =>
-              void patch({ newCardsPerDay: Math.max(0, Number(e.target.value) || 0) })
-            }
+            min={0}
+            max={999}
+            onChange={(next) => void patch({ newCardsPerDay: next })}
           />
         </div>
         <div className="row-between" style={{ marginTop: 12 }}>

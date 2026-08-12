@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { NumberStepper } from '../components/NumberStepper'
 import { db } from '../db/database'
 import type { Deck } from '../db/schema'
 import {
@@ -90,13 +91,13 @@ export function CustomStudyPage() {
         </p>
         <div className="field">
           <label htmlFor="new-limit">今日だけ</label>
-          <input
+          <NumberStepper
             id="new-limit"
-            type="number"
-            min={0}
-            inputMode="numeric"
+            aria-label="今日の新規カード上限"
             value={overrideInput}
-            onChange={(e) => setOverrideInput(Number(e.target.value))}
+            min={0}
+            max={999}
+            onChange={setOverrideInput}
           />
         </div>
         <button
@@ -118,13 +119,13 @@ export function CustomStudyPage() {
         </p>
         <div className="field">
           <label htmlFor="failed-days">過去 N 日</label>
-          <input
+          <NumberStepper
             id="failed-days"
-            type="number"
-            min={1}
-            inputMode="numeric"
+            aria-label="過去何日分を対象にするか"
             value={days}
-            onChange={(e) => setDays(Math.max(1, Number(e.target.value) || 1))}
+            min={1}
+            max={365}
+            onChange={setDays}
           />
         </div>
         <p style={{ margin: '12px 0' }}>
