@@ -13,20 +13,25 @@ export async function exportBackup(): Promise<Blob> {
       db.dailyOverrides.toArray(),
     ])
 
+  const exportedAt = Date.now()
+  const settingsForBackup = { ...settings, lastBackupAt: exportedAt }
   const zip = new JSZip()
   zip.file(
     'backup.json',
     JSON.stringify({
       version: 1,
       app: 'kioku',
-      exportedAt: Date.now(),
+      exportedAt,
     }),
   )
   zip.file('decks.json', JSON.stringify(decks))
   zip.file('notes.json', JSON.stringify(notes))
   zip.file('cards.json', JSON.stringify(cards))
   zip.file('reviews.json', JSON.stringify(reviewLogs))
-  zip.file('settings.json', JSON.stringify({ settings, dailyOverrides }))
+  zip.file(
+    'settings.json',
+    JSON.stringify({ settings: settingsForBackup, dailyOverrides }),
+  )
 
   const mediaFolder = zip.folder('media')!
   const mediaIndex: { id: string; filename: string; mimeType: string }[] = []
@@ -36,9 +41,9 @@ export async function exportBackup(): Promise<Blob> {
   }
   zip.file('media-index.json', JSON.stringify(mediaIndex))
 
-  await db.settings.update('settings', { lastBackupAt: Date.now() })
-
-  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
+  await db.settings.update('settings', { lastBackupAt: exportedAt })
+  return blob
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
@@ -47,5 +52,5 @@ export function downloadBlob(blob: Blob, filename: string) {
   a.href = url
   a.download = filename
   a.click()
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

@@ -49,7 +49,7 @@ export function SettingsPage() {
     if (!file) return
     if (
       !confirm(
-        '復元すると現在のデータはすべて削除され、バックアップの内容で置き換わります。続けますか？',
+        `バックアップ (${(file.size / 1024 / 1024).toFixed(1)} MB) を検証後、現在のデータと置き換えます。失敗時は元のデータが保持されます。続けますか？`,
       )
     ) {
       return
@@ -58,7 +58,9 @@ export function SettingsPage() {
     setMessage('')
     try {
       await restoreBackup(file)
-      setSettings(await ensureSettings())
+      const restored = await ensureSettings()
+      setSettings(restored)
+      await updateTheme(restored.theme)
       setMessage('復元が完了しました。')
     } catch (e) {
       setMessage(e instanceof Error ? e.message : '復元に失敗しました。')
