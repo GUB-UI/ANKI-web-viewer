@@ -1,4 +1,34 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" fill="none">
-  <rect width="192" height="192" rx="42" fill="#1a2332"/>
-  <path d="M54 126V66h24.6c16.2 0 26.4 9.3 26.4 23.4 0 14.4-10.2 23.7-26.4 23.7H73.8V126H54zm19.8-29.1h4.2c6.9 0 10.8-3.6 10.8-9.3s-3.9-9.3-10.8-9.3h-4.2v18.6zM111.6 126l21.6-60h20.4l21.6 60h-19.5l-3.6-10.8h-18l-3.6 10.8h-18.9zm27.6-24.6h10.8l-5.4-16.2-5.4 16.2z" fill="#7dd3c0"/>
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbfcfe" />
+      <stop offset="1" stop-color="#e8ecf3" />
+    </linearGradient>
+    <radialGradient id="ink-indigo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#4f66d6" stop-opacity="0.66" />
+      <stop offset="0.5" stop-color="#4f66d6" stop-opacity="0.22" />
+      <stop offset="1" stop-color="#4f66d6" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="ink-vermilion" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d1474e" stop-opacity="0.5" />
+      <stop offset="0.5" stop-color="#d1474e" stop-opacity="0.16" />
+      <stop offset="1" stop-color="#d1474e" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="192" height="192" rx="42" fill="url(#paper)" />
+
+  <g stroke="#131a24" fill="none">
+    <path d="M96 33V159M33 96H159" stroke-opacity="0.05" stroke-width="1" />
+    <circle cx="96" cy="96" r="57" stroke-opacity="0.1" stroke-width="1.2" />
+    <circle cx="96" cy="96" r="39" stroke-opacity="0.08" stroke-width="1.2" />
+    <circle cx="96" cy="96" r="21" stroke-opacity="0.07" stroke-width="1.2" />
+  </g>
+
+  <circle cx="90" cy="89" r="47" fill="url(#ink-indigo)" />
+  <circle cx="128" cy="131" r="27" fill="url(#ink-vermilion)" />
+
+  <circle cx="96" cy="39" r="3.4" fill="#4f66d6" />
+  <circle cx="135" cy="96" r="2.4" fill="#4f66d6" fill-opacity="0.7" />
+  <circle cx="96" cy="153" r="3.4" fill="#d1474e" />
 </svg>
