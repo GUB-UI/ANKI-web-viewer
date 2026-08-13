@@ -9,6 +9,11 @@ import {
   stopAudioPlayback,
   unlockAudio,
 } from '../utils/audio'
+import {
+  extraAnswerSounds,
+  pickQuestionSounds,
+  type SoundResolve,
+} from '../utils/studyAudio'
 import { RatingButtons } from './RatingButtons'
 
 interface Props {
@@ -17,6 +22,7 @@ interface Props {
   onReveal: () => void
   previews: Record<RatingValue, { label: string }>
   onRate: (rating: RatingValue) => void
+  answering?: boolean
   swipeEnabled: boolean
   autoFlipEnabled: boolean
   autoFlipSeconds: number
@@ -24,12 +30,6 @@ interface Props {
 
 const SWIPE_THRESHOLD = 96
 const FLY_PX = 480
-
-type SoundResolve =
-  | { status: 'empty' }
-  | { status: 'loading' }
-  | { status: 'missing'; names: string[] }
-  | { status: 'ready'; blobs: Blob[] }
 
 function resolveSounds(
   filenames: string[],
@@ -59,6 +59,7 @@ export function StudyCardView({
   onReveal,
   previews,
   onRate,
+  answering = false,
   swipeEnabled,
   autoFlipEnabled,
   autoFlipSeconds,
@@ -94,24 +95,29 @@ export function StudyCardView({
     [rendered.backSounds, blobMap, mediaReady],
   )
 
-  // Prefer question-side tags; if the template only puts audio on the answer
-  // side (common), still play it when the front face appears — not on flip.
-  const questionSounds = useMemo((): SoundResolve => {
-    if (frontSounds.status === 'loading' || backSounds.status === 'loading') {
-      return { status: 'loading' }
-    }
-    if (frontSounds.status === 'ready') return frontSounds
-    if (frontSounds.status === 'missing') return frontSounds
-    if (frontSounds.status === 'empty') {
-      if (backSounds.status === 'ready') return backSounds
-      if (backSounds.status === 'missing') return backSounds
-      return { status: 'empty' }
-    }
-    return frontSounds
-  }, [frontSounds, backSounds])
+  const questionSounds = useMemo(
+    () => pickQuestionSounds(frontSounds, backSounds),
+    [frontSounds, backSounds],
+  )
 
-  const playedBackOnQuestion =
-    frontSounds.status === 'empty' && questionSounds.status === 'ready'
+  const answerExtraNames = useMemo(
+    () => extraAnswerSounds(rendered.frontSounds, rendered.backSounds),
+    [rendered.frontSounds, rendered.backSounds],
+  )
+  const answerExtraSounds = useMemo(
+    () => resolveSounds(answerExtraNames, blobMap, mediaReady),
+    [answerExtraNames, blobMap, mediaReady],
+  )
+
+  const questionPlayKey =
+    questionSounds.status === 'ready'
+      ? `q:${rendered.frontSounds.join('|')}:${rendered.backSounds.join('|')}:${questionSounds.blobs.length}`
+      : questionSounds.status
+
+  const answerPlayKey =
+    answerExtraSounds.status === 'ready'
+      ? `a:${answerExtraNames.join('|')}:${answerExtraSounds.blobs.length}`
+      : answerExtraSounds.status
 
   const [offsetX, setOffsetX] = useState(0)
   const [swiping, setSwiping] = useState(false)
@@ -140,6 +146,8 @@ export function StudyCardView({
   ])
 
   // Play as soon as the front face is up and media is ready — never after flip.
+  // Do not stop() in cleanup: StrictMode / object-identity reruns were killing
+  // front audio, so the first audible play became the reveal gesture.
   useEffect(() => {
     if (showAnswer) {
       if (questionSounds.status !== 'loading') playedQuestion.current = true
@@ -156,40 +164,40 @@ export function StudyCardView({
     }
 
     const signal = { cancelled: false }
+    const blobs = questionSounds.blobs
     void (async () => {
-      const ok = await playAudioBlobs(questionSounds.blobs, signal)
+      const ok = await playAudioBlobs(blobs, signal)
       if (signal.cancelled) return
-      if (ok) {
-        playedQuestion.current = true
-        if (playedBackOnQuestion) playedBack.current = true
-      }
+      if (ok) playedQuestion.current = true
     })()
 
     return () => {
       signal.cancelled = true
-      if (!showAnswer) stopAudioPlayback()
     }
-  }, [questionSounds, showAnswer, playedBackOnQuestion])
+  }, [questionPlayKey, showAnswer, questionSounds])
 
-  // Answer-only audio after reveal (skip if we already used it as question audio).
+  // Only files that were not already used as question audio.
   useEffect(() => {
     if (!showAnswer || playedBack.current) return
-    if (backSounds.status === 'loading') return
-    if (backSounds.status === 'empty' || backSounds.status === 'missing') {
+    if (answerExtraSounds.status === 'loading') return
+    if (
+      answerExtraSounds.status === 'empty' ||
+      answerExtraSounds.status === 'missing'
+    ) {
       playedBack.current = true
       return
     }
     const signal = { cancelled: false }
+    const blobs = answerExtraSounds.blobs
     void (async () => {
-      const ok = await playAudioBlobs(backSounds.blobs, signal)
+      const ok = await playAudioBlobs(blobs, signal)
       if (signal.cancelled) return
       if (ok) playedBack.current = true
     })()
     return () => {
       signal.cancelled = true
-      stopAudioPlayback()
     }
-  }, [backSounds, showAnswer])
+  }, [answerPlayKey, showAnswer, answerExtraSounds])
 
   useEffect(() => {
     if (!autoFlipEnabled || showAnswer || flying) {
@@ -269,7 +277,7 @@ export function StudyCardView({
   }
 
   function rate(rating: RatingValue) {
-    if (busyRef.current || flying) return
+    if (busyRef.current || flying || answering) return
     void unlockAudio()
     onRate(rating)
   }
@@ -350,7 +358,11 @@ export function StudyCardView({
           答えを見る
         </button>
       ) : (
-        <RatingButtons previews={previews} onRate={rate} />
+        <RatingButtons
+          previews={previews}
+          onRate={rate}
+          disabled={answering || Boolean(flying)}
+        />
       )}
     </div>
   )

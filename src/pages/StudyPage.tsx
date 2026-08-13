@@ -201,6 +201,7 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
             onReveal={reveal}
             previews={previews}
             onRate={onRate}
+            answering={busy}
             swipeEnabled={swipeEnabled && showAnswer}
             autoFlipEnabled={autoFlipEnabled}
             autoFlipSeconds={autoFlipSeconds}

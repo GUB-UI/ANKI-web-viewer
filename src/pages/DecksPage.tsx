@@ -16,7 +16,7 @@ import {
   totalDue,
 } from '../study/deckTree'
 import { LEARNING_RESTORE_WINDOW_MS } from '../study/queue'
-import { unlockAudio } from '../utils/audio'
+import { stopAudioKeepAlive, unlockAudio } from '../utils/audio'
 
 export function DecksPage() {
   const navigate = useNavigate()
@@ -32,6 +32,7 @@ export function DecksPage() {
   useEffect(() => {
     void ensureSettings()
     void requestPersistentStorage()
+    stopAudioKeepAlive()
   }, [])
 
   useEffect(() => {

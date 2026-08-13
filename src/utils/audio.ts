@@ -56,6 +56,12 @@ function startKeepAlive(ctx: AudioContext): void {
   }, 2000)
 }
 
+export function stopAudioKeepAlive(): void {
+  if (keepAliveTimer == null) return
+  clearInterval(keepAliveTimer)
+  keepAliveTimer = null
+}
+
 function getContext(): AudioContext {
   if (!audioCtx) {
     audioCtx = new (AudioCtxCtor())()

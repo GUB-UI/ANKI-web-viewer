@@ -903,28 +903,6 @@ html[data-theme='dark'] .btn-primary {
   padding-top: 64px;
 }
 
-.audio-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  margin-top: -8px;
-}
-
-.audio-replay {
-  min-height: 40px;
-  padding: 8px 14px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.audio-missing {
-  font-size: 0.78rem;
-  color: var(--danger, #c0392b);
-  letter-spacing: 0.02em;
-}
-
 .swipe-badge {
   position: absolute;
   top: 22px;
