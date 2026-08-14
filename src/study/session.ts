@@ -11,14 +11,15 @@ const EMPTY_PREVIEWS: Record<RatingValue, { label: string; due: number }> = {
   4: { label: '—', due: 0 },
 }
 
-function stillDueThisSession(card: Card, now: number): boolean {
-  return (
-    (card.state === 'learning' || card.state === 'relearning') &&
-    card.due <= now + LEARNING_RESTORE_WINDOW_MS
-  )
+function isLearning(card: Card): boolean {
+  return card.state === 'learning' || card.state === 'relearning'
 }
 
-/** Rebuild the remaining queue after a rating. Hides the learning restore window. */
+function stillDueThisSession(card: Card, now: number): boolean {
+  return isLearning(card) && card.due <= now + LEARNING_RESTORE_WINDOW_MS
+}
+
+/** Rebuild the remaining queue after a rating. Keeps learning cards first. */
 export function continueQueue(
   remaining: Card[],
   updated: Card,
@@ -27,10 +28,17 @@ export function continueQueue(
 ): Card[] {
   const rest = remaining.filter((card) => card.id !== updated.id)
   if (source !== 'normal' || !stillDueThisSession(updated, now)) return rest
-  const insertAt = rest.findIndex((card) => card.due > updated.due)
-  if (insertAt === -1) rest.push(updated)
-  else rest.splice(insertAt, 0, updated)
-  return rest
+
+  const learning: Card[] = []
+  const tail: Card[] = []
+  for (const card of rest) {
+    if (isLearning(card)) learning.push(card)
+    else tail.push(card)
+  }
+  const insertAt = learning.findIndex((card) => card.due > updated.due)
+  if (insertAt === -1) learning.push(updated)
+  else learning.splice(insertAt, 0, updated)
+  return [...learning, ...tail]
 }
 
 export async function loadStudyCards(

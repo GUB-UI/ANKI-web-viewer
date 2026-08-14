@@ -32,6 +32,22 @@ describe('continueQueue', () => {
     expect(next.map((item) => item.id)).toEqual(['learn', 'a', 'b'])
   })
 
+  it('keeps reinserted learning cards ahead of review and new', () => {
+    const now = Date.now()
+    const updated = card({
+      id: 'later',
+      state: 'learning',
+      due: now + 10 * 60 * 1000,
+    })
+    const rest = [
+      card({ id: 'soon', state: 'learning', due: now + 60 * 1000 }),
+      card({ id: 'rev', state: 'review', due: now }),
+    ]
+    expect(continueQueue(rest, updated, 'normal', now).map((item) => item.id)).toEqual(
+      ['soon', 'later', 'rev'],
+    )
+  })
+
   it('does not reinsert after a custom rating', () => {
     const updated = card({
       id: 'learn',
