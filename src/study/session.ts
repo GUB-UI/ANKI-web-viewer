@@ -55,8 +55,9 @@ export async function applyRating(
   rating: RatingValue,
   source: ReviewSource,
   queue: Card[],
+  durationMs?: number,
 ): Promise<{ updated: Card; remaining: Card[] }> {
-  const updated = await answerCard(card, rating, source)
+  const updated = await answerCard(card, rating, source, durationMs)
   return {
     updated,
     remaining: continueQueue(queue, updated, source),

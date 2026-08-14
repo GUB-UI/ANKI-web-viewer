@@ -93,6 +93,17 @@ export function previewRatings(
   return result
 }
 
+export function cardRetrievability(card: Card, now = new Date()): number | null {
+  if (card.state === 'new' || !card.lastReview) return null
+  try {
+    const value = scheduler.get_retrievability(toFsrsCard(card), now, false)
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null
+    return value > 1 ? value / 100 : value
+  } catch {
+    return null
+  }
+}
+
 export function scheduleCard(
   card: Card,
   rating: RatingValue,

@@ -22,6 +22,8 @@
 | `/custom/:deckId` | カスタム学習の設定 |
 | `/custom-review/:deckId` | 補強復習（スケジュール非更新） |
 | `/settings` | 設定・バックアップ |
+| `/stats` | 統計（コレクション） |
+| `/stats/:deckId` | 統計（デッキと配下） |
 
 GitHub Pages では HashRouter（`#/`）。
 
@@ -112,7 +114,7 @@ GitHub Pages では HashRouter（`#/`）。
 
 ## 12. モジュール境界
 
-画面（`src/pages`）は学習ドメインの公開面 `src/study`（`index.ts`）だけを使う。内部ファイルは実装詳細。
+画面（`src/pages`）は学習ドメインの公開面 `src/study`（`index.ts`）と統計の公開面 `src/stats`（`index.ts`）だけを使う。内部ファイルは実装詳細。
 
 隠すもの:
 
@@ -128,3 +130,18 @@ GitHub Pages では HashRouter（`#/`）。
 - `.apkg` の `apkg` / `modernApkg` / `ankiSqlite` はフォーマット隔離（時間軸での分割ではない）
 - FSRS 本体は `src/scheduler`、永続化は `src/study/review`
 - カード音声の「どのファイルをいつ流すか」は再生経路と同じ `src/utils/audio.ts`
+- 統計の集計・Dexie スキャンは `src/stats`（学習キューとは別モジュール）
+
+## 13. 統計
+
+デッキ一覧の ▦ とデッキメニュー「統計」。Anki の意味に合わせるが、完全再現ではない。
+
+- 範囲: コレクション / このデッキ（配下含む）
+- 期間: 1ヶ月 / 1年 / すべて。Today は期間の影響を受けない
+- 「今日」はローカル深夜 0:00（Anki の 4:00 rollover は使わない）
+- 通常学習が本体。補強復習はカレンダーと復習数に「補強」として出し、予報・間隔・FSRS 分布・真の定着率・ボタン正答率からは除外
+- Mature = 間隔 21 日以上
+- 所要時間は表面表示から評価まで、上限 60 秒。古いログや time の無い取り込みは 0
+- 画面順: Today / 今後の復習 / カレンダー / 復習数 / カード内訳 / 学習時間 / 間隔 / 安定性・難易度・Retrievability / 時間帯 / 回答ボタン / 真の定着率
+- SM-2 の Ease グラフ、PDF、カード情報画面は出さない
+

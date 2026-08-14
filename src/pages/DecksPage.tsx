@@ -78,6 +78,9 @@ export function DecksPage() {
           <span className="brand-jp">記憶</span>
         </div>
         <div className="header-actions">
+          <Link to="/stats" className="icon-btn" aria-label="統計">
+            ▦
+          </Link>
           <Link to="/import" className="icon-btn" aria-label="インポート">
             ＋
           </Link>
@@ -147,6 +150,10 @@ export function DecksPage() {
             {
               label: 'カスタム学習',
               onClick: () => navigate(`/custom/${menuDeck.id}`),
+            },
+            {
+              label: '統計',
+              onClick: () => navigate(`/stats/${menuDeck.id}`),
             },
           ]}
           onClose={() => setMenuDeck(null)}

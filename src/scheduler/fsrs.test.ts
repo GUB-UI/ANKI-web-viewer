@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyFsrsDefaults, fromAnkiScheduling, scheduleCard } from './fsrs'
+import { applyFsrsDefaults, fromAnkiScheduling, scheduleCard, cardRetrievability } from './fsrs'
 import type { Card } from '../db/schema'
 
 function makeCard(partial: Partial<Card> = {}): Card {
@@ -59,5 +59,20 @@ describe('fsrs scheduler', () => {
     expect(scheduled.stability).toBe(4.5)
     expect(scheduled.difficulty).toBe(6.2)
     expect(scheduled.lastReview).toBe((crt + 60) * 1000)
+  })
+
+  it('returns retrievability for a reviewed card', () => {
+    const reviewed = makeCard({
+      state: 'review',
+      stability: 10,
+      difficulty: 5,
+      lastReview: Date.now() - 86400000,
+      elapsedDays: 1,
+      scheduledDays: 10,
+    })
+    const r = cardRetrievability(reviewed)
+    expect(r).toBeGreaterThan(0)
+    expect(r).toBeLessThanOrEqual(1)
+    expect(cardRetrievability(makeCard({ state: 'new' }))).toBeNull()
   })
 })

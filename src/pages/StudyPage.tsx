@@ -76,11 +76,17 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
   const previews = useMemo(() => ratingPreviews(card ?? null, source), [card, source])
   const reveal = useCallback(() => setShowAnswer(true), [])
 
-  async function onRate(rating: RatingValue) {
+  async function onRate(rating: RatingValue, durationMs: number) {
     if (!card || busy) return
     setBusy(true)
     try {
-      const { remaining } = await applyRating(card, rating, source, queue)
+      const { remaining } = await applyRating(
+        card,
+        rating,
+        source,
+        queue,
+        durationMs,
+      )
       setAnswered((n) => n + 1)
       setShowAnswer(false)
       setQueue(remaining)

@@ -65,6 +65,22 @@ export class KiokuDB extends Dexie {
             log.deckId ??= deckByCard.get(log.cardId)
           })
       })
+
+    this.version(3).stores({
+      decks: 'id, parentId, path, order',
+      notes: 'id, noteType',
+      cards:
+        'id, noteId, deckId, active, state, due, [deckId+active+state], ' +
+        '[active+state+due], [deckId+active+state+due], ' +
+        '[deckId+active+state+sortOrder]',
+      reviewLogs:
+        'id, cardId, deckId, reviewedAt, rating, source, stateBefore, ' +
+        '[rating+source+reviewedAt], [stateBefore+reviewedAt], ' +
+        '[deckId+stateBefore+reviewedAt], [deckId+reviewedAt]',
+      media: 'id, filename',
+      settings: 'id',
+      dailyOverrides: 'id, date, deckId, [date+deckId]',
+    })
   }
 }
 

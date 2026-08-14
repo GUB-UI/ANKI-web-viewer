@@ -1,4 +1,9 @@
 import JSZip from 'jszip'
+import {
+  capDurationMs,
+  intervalDaysFromAnkiIvl,
+  stateBeforeFromAnkiType,
+} from '../db/reviewFields'
 import { db } from '../db/database'
 import type { Card, Deck, Note, ReviewLog } from '../db/schema'
 import { applyFsrsDefaults, fromAnkiScheduling } from '../scheduler/fsrs'
@@ -416,6 +421,9 @@ export async function importApkg(
         source: 'normal',
         scheduledDays: Math.abs(Number(row.ivl ?? 0)),
         elapsedDays: Math.abs(Number(row.lastIvl ?? 0)),
+        durationMs: capDurationMs(Number(row.time ?? 0)),
+        intervalBefore: intervalDaysFromAnkiIvl(Number(row.lastIvl ?? 0)),
+        stateBefore: stateBeforeFromAnkiType(reviewType),
       })
     }
 

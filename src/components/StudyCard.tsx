@@ -19,7 +19,7 @@ interface Props {
   showAnswer: boolean
   onReveal: () => void
   previews: Record<RatingValue, { label: string }>
-  onRate: (rating: RatingValue) => void
+  onRate: (rating: RatingValue, durationMs: number) => void
   answering?: boolean
   swipeEnabled: boolean
   autoFlipEnabled: boolean
@@ -124,6 +124,7 @@ export function StudyCardView({
   const [countdown, setCountdown] = useState<number | null>(null)
   const [ratingFrozen, setRatingFrozen] = useState(false)
   const startX = useRef<number | null>(null)
+  const shownAtRef = useRef(Date.now())
   const offsetRef = useRef(0)
   const playedQuestion = useRef(false)
   const playedBack = useRef(false)
@@ -152,6 +153,7 @@ export function StudyCardView({
       freezeTimerRef.current = null
     }
     offsetRef.current = 0
+    shownAtRef.current = Date.now()
     stopAudioPlayback()
   }, [
     rendered.frontHtml,
@@ -278,7 +280,7 @@ export function StudyCardView({
     setOffsetX(direction === 'right' ? FLY_PX : -FLY_PX)
     void unlockAudio()
     window.setTimeout(() => {
-      onRate(rating)
+      onRate(rating, Date.now() - shownAtRef.current)
     }, 220)
   }
 
@@ -303,7 +305,7 @@ export function StudyCardView({
   function rate(rating: RatingValue) {
     if (busyRef.current || flying || answering || ratingFrozen) return
     void unlockAudio()
-    onRate(rating)
+    onRate(rating, Date.now() - shownAtRef.current)
   }
 
   const progress = clamp01(Math.abs(offsetX) / SWIPE_THRESHOLD)

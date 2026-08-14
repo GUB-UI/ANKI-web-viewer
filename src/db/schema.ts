@@ -61,6 +61,10 @@ export interface ReviewLog {
   scheduledDays?: number
   elapsedDays?: number
   stateBefore?: CardState
+  /** Time on the card, capped at 60s. Missing on older logs. */
+  durationMs?: number
+  /** Card interval in days just before this rating. Learning seconds → 0. */
+  intervalBefore?: number
 }
 
 export interface MediaFile {

@@ -4,6 +4,7 @@ import { ImportPage } from './pages/ImportPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { CustomStudyPage } from './pages/CustomStudyPage'
 import { CustomReviewPage, StudyPage } from './pages/StudyPage'
+import { StatsPage } from './pages/StatsPage'
 
 export default function App() {
   return (
@@ -12,6 +13,8 @@ export default function App() {
       <Route path="/study/:deckId" element={<StudyPage />} />
       <Route path="/custom/:deckId" element={<CustomStudyPage />} />
       <Route path="/custom-review/:deckId" element={<CustomReviewPage />} />
+      <Route path="/stats" element={<StatsPage />} />
+      <Route path="/stats/:deckId" element={<StatsPage />} />
       <Route path="/import" element={<ImportPage />} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

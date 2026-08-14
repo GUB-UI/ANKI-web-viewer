@@ -106,6 +106,7 @@ export async function recordCustomReview(
   cardId: string,
   deckId: string,
   rating: RatingValue,
+  durationMs?: number,
 ): Promise<void> {
   await db.reviewLogs.add({
     id: createId('rev'),
@@ -114,5 +115,6 @@ export async function recordCustomReview(
     reviewedAt: Date.now(),
     rating,
     source: 'custom',
+    durationMs,
   })
 }
