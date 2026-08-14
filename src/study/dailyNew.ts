@@ -198,3 +198,18 @@ export function countSelectableNewForStudyRoot(
   }
   return selected
 }
+
+export async function getEffectiveNewLimit(
+  deckId: string,
+  deck?: Deck,
+): Promise<number> {
+  const d = deck ?? (await db.decks.get(deckId))
+  const settings = await ensureSettings()
+  const override = await db.dailyOverrides
+    .where('[date+deckId]')
+    .equals([todayKey(), deckId])
+    .first()
+  if (override) return override.newCardsLimit
+  if (d?.newCardsPerDay != null) return d.newCardsPerDay
+  return settings.newCardsPerDay
+}

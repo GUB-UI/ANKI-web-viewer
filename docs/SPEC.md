@@ -1,6 +1,6 @@
 # Kioku 仕様書
 
-最終更新: 2026-08-13  
+最終更新: 2026-08-14  
 対象: 現行実装（ブランチ上の PWA）に合わせた仕様。Anki 完全互換クライアントではない。
 
 ## 1. 製品
@@ -109,3 +109,22 @@ GitHub Pages では HashRouter（`#/`）。
 - テンプレートはフィールド置換と条件ブロック程度。フィルタ・JS は非対応
 - Safari がデコードできない形式（一部 ogg/opus など）は無音になりうる
 - サンプル `.apkg` フィクスチャに音声は含まれない
+
+## 12. モジュール境界
+
+画面（`src/pages`）は学習ドメインの公開面 `src/study`（`index.ts`）だけを使う。内部ファイルは実装詳細。
+
+隠すもの:
+
+- キュー組み立てと学習中カードの **25分復元窓**
+- Dexie の due / new クエリ形
+- 補強復習キューの `sessionStorage`
+- 評価後のキュー再挿入
+
+ページが呼ぶもの: `snapshotHomeState`、`loadStudyCards`、`applyRating`、`ratingPreviews`、`remainingCounts`、`beginFailedReview`、日次新規上限の読み書き。
+
+意図的に分けたままにするもの:
+
+- `.apkg` の `apkg` / `modernApkg` / `ankiSqlite` はフォーマット隔離（時間軸での分割ではない）
+- FSRS 本体は `src/scheduler`、永続化は `src/study/review`
+- カード音声の「どのファイルをいつ流すか」は再生経路と同じ `src/utils/audio.ts`

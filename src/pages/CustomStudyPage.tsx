@@ -4,12 +4,12 @@ import { NumberStepper } from '../components/NumberStepper'
 import { db } from '../db/database'
 import type { Deck } from '../db/schema'
 import {
-  buildFailedCardsQueue,
+  beginFailedReview,
   countFailedCards,
   getDailyNewOverride,
+  getEffectiveNewLimit,
   setDailyNewOverride,
-} from '../study/customStudy'
-import { getEffectiveNewLimit } from '../study/queue'
+} from '../study'
 import { unlockAudio } from '../utils/audio'
 
 export function CustomStudyPage() {
@@ -61,13 +61,8 @@ export function CustomStudyPage() {
   }
 
   async function startFailedReview() {
-    // Unlock must run before any await — iOS drops the gesture otherwise.
     void unlockAudio()
-    const cards = await buildFailedCardsQueue(deckId, days)
-    sessionStorage.setItem(
-      `customQueue:${deckId}`,
-      JSON.stringify(cards.map((c) => c.id)),
-    )
+    await beginFailedReview(deckId, days)
     navigate(`/custom-review/${deckId}`)
   }
 

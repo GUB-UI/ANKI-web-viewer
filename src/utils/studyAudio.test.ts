@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extraAnswerSounds, pickQuestionSounds } from './studyAudio'
+import { extraAnswerSounds, pickQuestionSounds } from './audio'
 
 const blob = new Blob([new Uint8Array([1])], { type: 'audio/mpeg' })
 

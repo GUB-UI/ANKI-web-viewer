@@ -1,6 +1,5 @@
-import { db, ensureSettings } from '../db/database'
-import type { Card, Deck } from '../db/schema'
-import { todayKey } from '../utils/dates'
+import { db } from '../db/database'
+import type { Card, Deck, DeckCounts } from '../db/schema'
 import {
   countActiveNewByDeck,
   fetchDueCardsByDeck,
@@ -16,19 +15,6 @@ import { computeDeckCounts } from './deckTree'
 
 /** Keep near-term learning steps available when a study session is reopened. */
 export const LEARNING_RESTORE_WINDOW_MS = 25 * 60 * 1000
-
-export async function getEffectiveNewLimit(deckId: string, deck?: Deck): Promise<number> {
-  const d = deck ?? (await db.decks.get(deckId))
-  const settings = await ensureSettings()
-  const override = await db.dailyOverrides
-    .where('[date+deckId]')
-    .equals([todayKey(), deckId])
-    .first()
-
-  if (override) return override.newCardsLimit
-  if (d?.newCardsPerDay != null) return d.newCardsPerDay
-  return settings.newCardsPerDay
-}
 
 export async function buildStudyQueue(rootDeckId: string): Promise<{
   cards: Card[]
@@ -50,9 +36,12 @@ export async function buildStudyQueue(rootDeckId: string): Promise<{
   return { cards, deckIds }
 }
 
-export async function getTodayTotals(): Promise<{ new: number; review: number }> {
+export async function snapshotHomeState(now = Date.now()): Promise<{
+  decks: Deck[]
+  counts: Map<string, DeckCounts>
+  today: { new: number; review: number }
+}> {
   const decks = await db.decks.toArray()
-  const now = Date.now()
   const deckIds = decks.map((deck) => deck.id)
   const dailyNew = await loadDailyNewContext(now, decks)
   const [dueByDeck, availableNewByDeck] = await Promise.all([
@@ -60,16 +49,18 @@ export async function getTodayTotals(): Promise<{ new: number; review: number }>
     countActiveNewByDeck(deckIds),
   ])
   const counts = computeDeckCounts(decks, dueByDeck, availableNewByDeck, dailyNew)
-  const roots = decks.filter((deck) => !deck.parentId)
-  return roots.reduce(
-    (total, root) => {
-      const count = counts.get(root.id)
-      if (count) {
-        total.new += count.new
-        total.review += count.review + count.learning
-      }
-      return total
-    },
-    { new: 0, review: 0 },
-  )
+  const today = decks
+    .filter((deck) => !deck.parentId)
+    .reduce(
+      (total, root) => {
+        const count = counts.get(root.id)
+        if (count) {
+          total.new += count.new
+          total.review += count.review + count.learning
+        }
+        return total
+      },
+      { new: 0, review: 0 },
+    )
+  return { decks, counts, today }
 }

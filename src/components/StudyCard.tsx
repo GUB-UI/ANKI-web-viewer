@@ -5,15 +5,13 @@ import { useMediaEntries } from '../hooks/useMediaUrls'
 import { extractMediaFilenames } from '../utils/mediaRefs'
 import { sanitizeCardHtml } from '../utils/sanitizeCardHtml'
 import {
+  extraAnswerSounds,
+  pickQuestionSounds,
   playAudioBlobs,
   stopAudioPlayback,
   unlockAudio,
-} from '../utils/audio'
-import {
-  extraAnswerSounds,
-  pickQuestionSounds,
   type SoundResolve,
-} from '../utils/studyAudio'
+} from '../utils/audio'
 import { RatingButtons } from './RatingButtons'
 
 interface Props {

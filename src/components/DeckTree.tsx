@@ -1,5 +1,5 @@
 import type { DeckCounts, Deck } from '../db/schema'
-import { totalDue, type DeckNode } from '../study/deckTree'
+import { totalDue, type DeckNode } from '../study'
 
 interface Props {
   nodes: DeckNode[]
