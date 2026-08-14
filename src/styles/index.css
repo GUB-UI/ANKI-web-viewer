@@ -1083,6 +1083,12 @@ html[data-theme='dark'] .btn-primary {
   opacity: 0.72;
 }
 
+.rating-btn:disabled {
+  cursor: default;
+  opacity: 0.38;
+  pointer-events: none;
+}
+
 .rating-btn small {
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;

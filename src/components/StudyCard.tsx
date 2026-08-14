@@ -30,6 +30,7 @@ interface Props {
 
 const SWIPE_THRESHOLD = 96
 const FLY_PX = 480
+const RATING_FREEZE_MS = 500
 
 function resolveSounds(
   filenames: string[],
@@ -123,11 +124,22 @@ export function StudyCardView({
   const [swiping, setSwiping] = useState(false)
   const [flying, setFlying] = useState<'left' | 'right' | null>(null)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [ratingFrozen, setRatingFrozen] = useState(false)
   const startX = useRef<number | null>(null)
   const offsetRef = useRef(0)
   const playedQuestion = useRef(false)
   const playedBack = useRef(false)
   const busyRef = useRef(false)
+  const freezeTimerRef = useRef<number | null>(null)
+
+  function startRatingFreeze() {
+    setRatingFrozen(true)
+    if (freezeTimerRef.current != null) window.clearTimeout(freezeTimerRef.current)
+    freezeTimerRef.current = window.setTimeout(() => {
+      setRatingFrozen(false)
+      freezeTimerRef.current = null
+    }, RATING_FREEZE_MS)
+  }
 
   useEffect(() => {
     playedQuestion.current = false
@@ -136,6 +148,11 @@ export function StudyCardView({
     setOffsetX(0)
     setSwiping(false)
     setFlying(null)
+    setRatingFrozen(false)
+    if (freezeTimerRef.current != null) {
+      window.clearTimeout(freezeTimerRef.current)
+      freezeTimerRef.current = null
+    }
     offsetRef.current = 0
     stopAudioPlayback()
   }, [
@@ -144,6 +161,13 @@ export function StudyCardView({
     rendered.frontSounds,
     rendered.backSounds,
   ])
+
+  useEffect(
+    () => () => {
+      if (freezeTimerRef.current != null) window.clearTimeout(freezeTimerRef.current)
+    },
+    [],
+  )
 
   // Play as soon as the front face is up and media is ready — never after flip.
   // Do not stop() in cleanup: StrictMode / object-identity reruns were killing
@@ -215,6 +239,7 @@ export function StudyCardView({
       stopAudioPlayback()
       playedQuestion.current = true
       void unlockAudio()
+      startRatingFreeze()
       onReveal()
     }, seconds * 1000)
     return () => {
@@ -224,7 +249,7 @@ export function StudyCardView({
   }, [autoFlipEnabled, autoFlipSeconds, showAnswer, flying, onReveal, rendered])
 
   function onPointerDown(e: React.PointerEvent) {
-    if (!showAnswer || !swipeEnabled || flying || busyRef.current) return
+    if (!showAnswer || !swipeEnabled || flying || busyRef.current || ratingFrozen) return
     startX.current = e.clientX
     setSwiping(true)
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
@@ -273,11 +298,12 @@ export function StudyCardView({
     stopAudioPlayback()
     playedQuestion.current = true
     void unlockAudio()
+    startRatingFreeze()
     onReveal()
   }
 
   function rate(rating: RatingValue) {
-    if (busyRef.current || flying || answering) return
+    if (busyRef.current || flying || answering || ratingFrozen) return
     void unlockAudio()
     onRate(rating)
   }
@@ -361,7 +387,7 @@ export function StudyCardView({
         <RatingButtons
           previews={previews}
           onRate={rate}
-          disabled={answering || Boolean(flying)}
+          disabled={answering || Boolean(flying) || ratingFrozen}
         />
       )}
     </div>

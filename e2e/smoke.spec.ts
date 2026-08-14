@@ -117,5 +117,7 @@ test.describe('Kioku MVP smoke', () => {
     await page.getByRole('button', { name: '学習開始' }).click()
     await expect(page.locator('.auto-flip-countdown')).toBeVisible()
     await expect(page.locator('.rating-dock')).toBeVisible({ timeout: 3000 })
+    await expect(page.locator('.rating-btn').first()).toBeDisabled()
+    await expect(page.locator('.rating-btn').first()).toBeEnabled({ timeout: 1500 })
   })
 })
