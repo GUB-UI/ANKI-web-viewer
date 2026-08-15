@@ -18,7 +18,7 @@ function card(partial: Partial<Card>): Card {
 }
 
 describe('continueQueue', () => {
-  it('does not put a not-yet-due Again card ahead of due reviews', () => {
+  it('removes the rated card even when it is due again soon', () => {
     const now = Date.now()
     const updated = card({
       id: 'learn',
@@ -29,12 +29,12 @@ describe('continueQueue', () => {
       card({ id: 'a', state: 'review', due: now }),
       card({ id: 'b', state: 'new', due: 0 }),
     ]
-    expect(continueQueue(rest, updated, 'normal', now).map((item) => item.id)).toEqual(
-      ['a', 'b', 'learn'],
+    expect(continueQueue([...rest, updated], updated).map((item) => item.id)).toEqual(
+      ['a', 'b'],
     )
   })
 
-  it('inserts an already-due learning card among other due learning', () => {
+  it('does not reinsert an already-due learning card', () => {
     const now = Date.now()
     const updated = card({
       id: 'now',
@@ -45,31 +45,16 @@ describe('continueQueue', () => {
       card({ id: 'soon', state: 'learning', due: now + 60 * 1000 }),
       card({ id: 'rev', state: 'review', due: now }),
     ]
-    expect(continueQueue(rest, updated, 'normal', now).map((item) => item.id)).toEqual(
-      ['now', 'rev', 'soon'],
-    )
+    expect(continueQueue(rest, updated).map((item) => item.id)).toEqual(['soon', 'rev'])
   })
 
-  it('ends the session when only a future learning card remains', () => {
-    const now = Date.now()
+  it('ends the session when only the rated card remains', () => {
     const updated = card({
       id: 'learn',
       state: 'learning',
-      due: now + 10 * 60 * 1000,
+      due: Date.now() + 10 * 60 * 1000,
     })
-    expect(continueQueue([], updated, 'normal', now)).toEqual([])
-  })
-
-  it('does not reinsert after a custom rating', () => {
-    const updated = card({
-      id: 'learn',
-      state: 'learning',
-      due: Date.now() + 5 * 60 * 1000,
-    })
-    const rest = [card({ id: 'a', state: 'review', due: Date.now() })]
-    expect(continueQueue(rest, updated, 'custom').map((item) => item.id)).toEqual(
-      ['a'],
-    )
+    expect(continueQueue([updated], updated)).toEqual([])
   })
 })
 

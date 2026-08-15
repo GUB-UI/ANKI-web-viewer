@@ -5,6 +5,7 @@ import {
   scheduleCard,
   cardRetrievability,
   previewRatings,
+  MIN_LEARNING_DUE_MS,
 } from './fsrs'
 import type { Card } from '../db/schema'
 
@@ -67,13 +68,32 @@ describe('fsrs scheduler', () => {
     expect(scheduled.lastReview).toBe((crt + 60) * 1000)
   })
 
-  it('shows FSRS step minutes and scheduled days on rating buttons', () => {
+  it('keeps learning Again/Hard at least one hour on new cards', () => {
     const now = new Date('2026-08-15T12:00:00Z')
-    const labels = previewRatings(makeCard({ state: 'new' }), now)
-    expect(labels[1].label).toBe('1m')
-    expect(labels[2].label).toBe('6m')
-    expect(labels[3].label).toBe('10m')
+    const card = makeCard({ state: 'new' })
+    const labels = previewRatings(card, now)
+    expect(labels[1].label).toBe('1h')
+    expect(labels[2].label).toBe('2h')
     expect(labels[4].label).toBe('8d')
+
+    const again = scheduleCard(card, 1, now)
+    expect(again.next.state).toBe('learning')
+    expect(again.next.due).toBeGreaterThanOrEqual(now.getTime() + MIN_LEARNING_DUE_MS)
+
+    const reviewAgain = scheduleCard(
+      makeCard({
+        state: 'review',
+        stability: 10,
+        difficulty: 5,
+        lastReview: now.getTime() - 86400000,
+        elapsedDays: 1,
+        scheduledDays: 10,
+      }),
+      1,
+      now,
+    )
+    expect(reviewAgain.next.state).toBe('relearning')
+    expect(reviewAgain.next.due).toBeGreaterThanOrEqual(now.getTime() + MIN_LEARNING_DUE_MS)
   })
 
   it('returns retrievability for a reviewed card', () => {

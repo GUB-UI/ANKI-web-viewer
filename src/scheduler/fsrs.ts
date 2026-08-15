@@ -9,7 +9,27 @@ import {
 import type { Card, CardState, RatingValue } from '../db/schema'
 import { formatPreviewLabel } from '../utils/dates'
 
-const scheduler = fsrs()
+/** Learning / relearning cards never become due sooner than this. */
+export const MIN_LEARNING_DUE_MS = 60 * 60 * 1000
+
+const scheduler = fsrs({
+  learning_steps: ['1h'],
+  relearning_steps: ['1h'],
+})
+
+function isLearningLike(state: CardState | State): boolean {
+  return (
+    state === 'learning' ||
+    state === 'relearning' ||
+    state === State.Learning ||
+    state === State.Relearning
+  )
+}
+
+function clampLearningDue(due: number, state: CardState | State, nowMs: number): number {
+  if (!isLearningLike(state)) return due
+  return Math.max(due, nowMs + MIN_LEARNING_DUE_MS)
+}
 
 const STATE_TO_FSRS: Record<CardState, State> = {
   new: State.New,
@@ -84,9 +104,9 @@ export function previewRatings(
   const result = {} as Record<RatingValue, { due: number; label: string }>
   for (const grade of [Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as Grade[]) {
     const item = preview[grade]
-    const due = item.card.due.getTime()
     const learning =
       item.card.state === State.Learning || item.card.state === State.Relearning
+    const due = clampLearningDue(item.card.due.getTime(), item.card.state, now.getTime())
     result[grade as RatingValue] = {
       due,
       label: formatPreviewLabel({
@@ -133,10 +153,11 @@ export function scheduleCard(
   elapsedDays: number
 } {
   const { card: next, log } = scheduler.next(toFsrsCard(card), now, rating as Grade)
+  const state = FSRS_TO_STATE[next.state]
   return {
     next: {
-      state: FSRS_TO_STATE[next.state],
-      due: next.due.getTime(),
+      state,
+      due: clampLearningDue(next.due.getTime(), state, now.getTime()),
       stability: next.stability,
       difficulty: next.difficulty,
       scheduledDays: next.scheduled_days,
