@@ -9,12 +9,12 @@ import {
 import type { Card, CardState, RatingValue } from '../db/schema'
 import { formatPreviewLabel } from '../utils/dates'
 
-/** Learning / relearning cards never become due sooner than this. */
-export const MIN_LEARNING_DUE_MS = 60 * 60 * 1000
+/** Persisted learning / relearning due is never sooner than this. */
+export const MIN_LEARNING_DUE_MS = 15 * 60 * 1000
 
 const scheduler = fsrs({
-  learning_steps: ['1h'],
-  relearning_steps: ['1h'],
+  learning_steps: ['15m'],
+  relearning_steps: ['15m'],
 })
 
 function isLearningLike(state: CardState | State): boolean {

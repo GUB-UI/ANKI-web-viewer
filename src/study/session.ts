@@ -12,12 +12,44 @@ const EMPTY_PREVIEWS: Record<RatingValue, { label: string; due: number }> = {
 }
 
 /**
- * Rated cards leave this session. Same-session reappearance would make
- * Again / Hard look like successful recall. Reopen later to continue
- * cards that have become due.
+ * Anki requeues still-learning cards and, if they would appear immediately,
+ * places them after the next card (`requeue_learning_entry`). Waiting out
+ * the stored 15m due in-session is impractical, so Again/Hard come back
+ * after a few review cards instead.
  */
-export function continueQueue(remaining: Card[], updated: Card): Card[] {
-  return remaining.filter((card) => card.id !== updated.id)
+export const LEARNING_REQUEUE_REVIEW_GAP = 3
+
+function isLearning(card: Card): boolean {
+  return card.state === 'learning' || card.state === 'relearning'
+}
+
+function insertAfterReviewGap(rest: Card[], updated: Card, gap: number): Card[] {
+  let reviewsSeen = 0
+  let lastReview = -1
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i].state !== 'review') continue
+    reviewsSeen += 1
+    lastReview = i
+    if (reviewsSeen >= gap) {
+      return [...rest.slice(0, i + 1), updated, ...rest.slice(i + 1)]
+    }
+  }
+  if (lastReview >= 0) {
+    return [...rest.slice(0, lastReview + 1), updated, ...rest.slice(lastReview + 1)]
+  }
+  if (rest.length === 0) return []
+  const skip = Math.min(gap, rest.length)
+  return [...rest.slice(0, skip), updated, ...rest.slice(skip)]
+}
+
+export function continueQueue(
+  remaining: Card[],
+  updated: Card,
+  source: ReviewSource,
+): Card[] {
+  const rest = remaining.filter((card) => card.id !== updated.id)
+  if (source !== 'normal' || !isLearning(updated)) return rest
+  return insertAfterReviewGap(rest, updated, LEARNING_REQUEUE_REVIEW_GAP)
 }
 
 export async function loadStudyCards(
@@ -39,7 +71,7 @@ export async function applyRating(
   const updated = await answerCard(card, rating, source, durationMs)
   return {
     updated,
-    remaining: continueQueue(queue, updated),
+    remaining: continueQueue(queue, updated, source),
   }
 }
 

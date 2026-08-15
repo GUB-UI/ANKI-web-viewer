@@ -68,12 +68,12 @@ describe('fsrs scheduler', () => {
     expect(scheduled.lastReview).toBe((crt + 60) * 1000)
   })
 
-  it('keeps learning Again/Hard at least one hour on new cards', () => {
+  it('keeps learning Again/Hard at least 15 minutes on new cards', () => {
     const now = new Date('2026-08-15T12:00:00Z')
     const card = makeCard({ state: 'new' })
     const labels = previewRatings(card, now)
-    expect(labels[1].label).toBe('1h')
-    expect(labels[2].label).toBe('2h')
+    expect(labels[1].label).toBe('15m')
+    expect(labels[2].label).toBe('23m')
     expect(labels[4].label).toBe('8d')
 
     const again = scheduleCard(card, 1, now)
