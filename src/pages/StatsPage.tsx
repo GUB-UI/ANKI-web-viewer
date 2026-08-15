@@ -17,6 +17,13 @@ import {
   type StatsSnapshot,
 } from '../stats'
 
+function stackLabel(range: StatsRange, index: number, count: number): string {
+  const fromEnd = count - 1 - index
+  if (range === 'month') return fromEnd === 0 ? '今日' : `${fromEnd}日前`
+  if (range === 'year') return fromEnd === 0 ? '今週' : `${fromEnd}週前`
+  return fromEnd === 0 ? '直近' : `${fromEnd}ヶ月前`
+}
+
 function formatStudyTime(ms: number): string {
   const sec = Math.round(ms / 1000)
   if (sec < 60) return `${sec}秒`
@@ -140,7 +147,12 @@ export function StatsPage() {
           <section className="section">
             <span className="eyebrow">04 Reviews</span>
             <h2>復習数</h2>
-            <StackedBars series={snapshot.reviews} />
+            <StackedBars
+              series={snapshot.reviews}
+              labelOf={(index) =>
+                stackLabel(range, index, snapshot.reviews.buckets.length)
+              }
+            />
           </section>
 
           <section className="section">
@@ -157,7 +169,13 @@ export function StatsPage() {
                 所要時間はこれ以降の学習から記録します。取り込み済みの履歴は Anki の time がある分だけ含みます。
               </p>
             ) : null}
-            <StackedBars series={snapshot.reviewTime} unit="秒" />
+            <StackedBars
+              series={snapshot.reviewTime}
+              unit="秒"
+              labelOf={(index) =>
+                stackLabel(range, index, snapshot.reviewTime.buckets.length)
+              }
+            />
           </section>
 
           <section className="section">

@@ -1460,6 +1460,19 @@ html[data-theme='dark'] .btn-primary {
   margin: 0 0 10px;
   font-size: 0.82rem;
   color: var(--ink-soft);
+  min-height: 1.35em;
+}
+
+.stats-avg.is-live {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.stats-bars,
+.stats-hourly {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .stats-bars {
@@ -1496,6 +1509,22 @@ html[data-theme='dark'] .btn-primary {
 
 .stats-bar-fill {
   background: var(--anki-review);
+}
+
+.stats-bars.is-scrubbing .stats-bar,
+.stats-hourly.is-scrubbing .stats-hourly-col {
+  opacity: 0.28;
+}
+
+.stats-bars.is-scrubbing .stats-bar.is-active,
+.stats-hourly.is-scrubbing .stats-hourly-col.is-active {
+  opacity: 1;
+}
+
+.stats-bar.is-active .stats-bar-fill,
+.stats-bar.is-active .stats-bar-stack,
+.stats-hourly-col.is-active .stats-bar-fill {
+  box-shadow: 0 0 0 1px var(--ink);
 }
 
 .stats-seg {

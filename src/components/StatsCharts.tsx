@@ -1,3 +1,4 @@
+import { useRef, useState, type PointerEvent } from 'react'
 import type {
   ButtonStats,
   CalendarStats,
@@ -7,8 +8,10 @@ import type {
   HourlyBin,
   RetentionRow,
   RetrievabilityStats,
+  StackedBucket,
   StackedSeries,
 } from '../stats'
+import { barIndexAt } from './barScrub'
 
 const STACK_KEYS = ['learn', 'young', 'mature', 'relearn', 'extra'] as const
 const STACK_LABEL: Record<(typeof STACK_KEYS)[number], string> = {
@@ -23,22 +26,89 @@ function maxOf(values: number[]): number {
   return Math.max(1, ...values)
 }
 
+function useBarScrub(count: number) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [index, setIndex] = useState<number | null>(null)
+
+  function pick(event: PointerEvent<HTMLDivElement>) {
+    const el = ref.current
+    if (!el || count <= 0) return
+    const rect = el.getBoundingClientRect()
+    setIndex(barIndexAt(event.clientX - rect.left, rect.width, count))
+  }
+
+  return {
+    ref,
+    index,
+    handlers: {
+      onPointerDown: (event: PointerEvent<HTMLDivElement>) => {
+        event.currentTarget.setPointerCapture(event.pointerId)
+        pick(event)
+      },
+      onPointerMove: (event: PointerEvent<HTMLDivElement>) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+        pick(event)
+      },
+    },
+  }
+}
+
+function ScrubReadout({
+  text,
+  hint,
+}: {
+  text: string | null
+  hint: string
+}) {
+  return (
+    <p className={`stats-avg numeric${text ? ' is-live' : ''}`} aria-live="polite">
+      {text ?? hint}
+    </p>
+  )
+}
+
 export function StackedBars({
   series,
   unit,
+  labelOf,
 }: {
   series: StackedSeries
   unit?: string
+  labelOf?: (index: number, bucket: StackedBucket) => string
 }) {
+  const { ref, index, handlers } = useBarScrub(series.buckets.length)
   if (series.buckets.every((bucket) => bucket.total === 0)) {
     return <p className="muted stats-empty">まだ記録がありません</p>
   }
   const peak = maxOf(series.buckets.map((bucket) => bucket.total))
+  const active = index != null ? series.buckets[index] : undefined
+  const parts = active
+    ? STACK_KEYS.filter((key) => active[key] > 0)
+        .map((key) => `${STACK_LABEL[key]} ${formatAvg(active[key])}`)
+        .join(' · ')
+    : ''
+  const title =
+    active && index != null
+      ? (labelOf?.(index, active) ?? `区間 ${index + 1}`)
+      : null
+  const detail = active
+    ? `${title} · ${formatAvg(active.total)}${unit ? unit : ''}${parts ? `（${parts}）` : ''}`
+    : null
   return (
     <div>
-      <div className="stats-bars" role="img" aria-label="積み上げ棒グラフ">
-        {series.buckets.map((bucket, index) => (
-          <div key={bucket.key + index} className="stats-bar">
+      <ScrubReadout text={detail} hint="棒をなぞると詳細" />
+      <div
+        ref={ref}
+        className={`stats-bars${index != null ? ' is-scrubbing' : ''}`}
+        role="img"
+        aria-label="積み上げ棒グラフ"
+        {...handlers}
+      >
+        {series.buckets.map((bucket, barIndex) => (
+          <div
+            key={bucket.key + barIndex}
+            className={`stats-bar${index === barIndex ? ' is-active' : ''}`}
+          >
             <div className="stats-bar-stack" style={{ height: `${(bucket.total / peak) * 100}%` }}>
               {STACK_KEYS.map((key) =>
                 bucket[key] > 0 ? (
@@ -61,7 +131,6 @@ export function StackedBars({
           </li>
         ))}
       </ul>
-      {unit ? <p className="muted stats-note">{unit}</p> : null}
     </div>
   )
 }
@@ -94,25 +163,40 @@ export function Heatmap({ calendar }: { calendar: CalendarStats }) {
 export function HistogramBars({
   data,
   showAverage = true,
+  unit = '枚',
 }: {
   data: HistogramStats
   showAverage?: boolean
+  unit?: string
 }) {
+  const { ref, index, handlers } = useBarScrub(data.bins.length)
   if (data.bins.every((bin) => bin.count === 0)) {
     return <p className="muted stats-empty">まだ記録がありません</p>
   }
   const peak = maxOf(data.bins.map((bin) => bin.count))
+  const bin = index != null ? data.bins[index] : undefined
+  const detail = bin
+    ? `${bin.key} · ${bin.count}${unit} · 累積 ${bin.cumulativePct}%`
+    : null
+  const hint = showAverage ? `平均 ${formatAvg(data.average)} · なぞると詳細` : '棒をなぞると詳細'
   return (
     <div>
-      {showAverage ? (
-        <p className="stats-avg numeric">平均 {formatAvg(data.average)}</p>
-      ) : null}
-      <div className="stats-bars stats-bars-wide" role="img" aria-label="分布">
-        {data.bins.map((bin) => (
-          <div key={bin.key} className="stats-bar">
+      <ScrubReadout text={detail} hint={hint} />
+      <div
+        ref={ref}
+        className={`stats-bars stats-bars-wide${index != null ? ' is-scrubbing' : ''}`}
+        role="img"
+        aria-label="分布"
+        {...handlers}
+      >
+        {data.bins.map((item, barIndex) => (
+          <div
+            key={item.key}
+            className={`stats-bar${index === barIndex ? ' is-active' : ''}`}
+          >
             <div
               className="stats-bar-fill"
-              style={{ height: `${(bin.count / peak) * 100}%` }}
+              style={{ height: `${(item.count / peak) * 100}%` }}
             />
           </div>
         ))}
@@ -122,22 +206,42 @@ export function HistogramBars({
 }
 
 export function FutureDueChart({ data }: { data: FutureDueStats }) {
+  const { ref, index, handlers } = useBarScrub(data.buckets.length)
   if (data.buckets.every((bucket) => bucket.due === 0) && data.overdue === 0) {
     return <p className="muted stats-empty">予定されている復習はありません</p>
   }
   const peak = maxOf(data.buckets.map((bucket) => bucket.due))
+  const bucket = index != null ? data.buckets[index] : undefined
+  const when =
+    bucket == null
+      ? null
+      : bucket.offset === 0
+        ? '今日'
+        : bucket.offset === 1
+          ? '明日'
+          : `${bucket.offset}日後`
+  const detail = bucket
+    ? `${when} · ${bucket.due}枚 · 累積 ${bucket.cumulative}`
+    : null
+  const hint = `Daily load ${data.dailyLoad}${data.overdue > 0 ? ` · 遅れ ${data.overdue}` : ''} · なぞると詳細`
   return (
     <div>
-      <p className="stats-avg numeric">
-        Daily load {data.dailyLoad}
-        {data.overdue > 0 ? ` · 遅れ ${data.overdue}` : ''}
-      </p>
-      <div className="stats-bars" role="img" aria-label="今後の復習">
-        {data.buckets.map((bucket) => (
-          <div key={bucket.offset} className="stats-bar">
+      <ScrubReadout text={detail} hint={hint} />
+      <div
+        ref={ref}
+        className={`stats-bars${index != null ? ' is-scrubbing' : ''}`}
+        role="img"
+        aria-label="今後の復習"
+        {...handlers}
+      >
+        {data.buckets.map((item, barIndex) => (
+          <div
+            key={item.offset}
+            className={`stats-bar${index === barIndex ? ' is-active' : ''}`}
+          >
             <div
               className="stats-bar-fill stats-seg-mature"
-              style={{ height: `${(bucket.due / peak) * 100}%` }}
+              style={{ height: `${(item.due / peak) * 100}%` }}
             />
           </div>
         ))}
@@ -181,21 +285,37 @@ export function CardCountList({ data }: { data: CardCountStats }) {
 }
 
 export function HourlyChart({ hours }: { hours: HourlyBin[] }) {
+  const { ref, index, handlers } = useBarScrub(hours.length)
   if (hours.every((row) => row.count === 0)) {
     return <p className="muted stats-empty">まだ記録がありません</p>
   }
   const peak = maxOf(hours.map((row) => row.count))
+  const row = index != null ? hours[index] : undefined
+  const detail = row
+    ? `${row.hour}時 · ${row.count}回 · 正答 ${Math.round(row.passPct)}%`
+    : null
   return (
-    <div className="stats-hourly">
-      {hours.map((row) => (
-        <div key={row.hour} className="stats-hourly-col">
+    <div>
+      <ScrubReadout text={detail} hint="棒をなぞると詳細" />
+      <div
+        ref={ref}
+        className={`stats-hourly${index != null ? ' is-scrubbing' : ''}`}
+        role="img"
+        aria-label="時間帯"
+        {...handlers}
+      >
+        {hours.map((item, barIndex) => (
           <div
-            className="stats-bar-fill"
-            style={{ height: `${(row.count / peak) * 100}%` }}
-          />
-          <span className="stats-hourly-pass">{row.count ? `${Math.round(row.passPct)}` : ''}</span>
-        </div>
-      ))}
+            key={item.hour}
+            className={`stats-hourly-col${index === barIndex ? ' is-active' : ''}`}
+          >
+            <div
+              className="stats-bar-fill"
+              style={{ height: `${(item.count / peak) * 100}%` }}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

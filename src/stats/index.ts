@@ -11,6 +11,7 @@ export type {
   TodayStats,
   FutureDueStats,
   CalendarStats,
+  StackedBucket,
   StackedSeries,
   CardCountStats,
   HistogramStats,
