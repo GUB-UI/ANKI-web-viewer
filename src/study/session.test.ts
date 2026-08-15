@@ -18,34 +18,46 @@ function card(partial: Partial<Card>): Card {
 }
 
 describe('continueQueue', () => {
-  it('reinserts a near-term learning card after a normal rating', () => {
+  it('does not put a not-yet-due Again card ahead of due reviews', () => {
+    const now = Date.now()
     const updated = card({
       id: 'learn',
       state: 'learning',
-      due: Date.now() + 5 * 60 * 1000,
+      due: now + 5 * 60 * 1000,
     })
     const rest = [
-      card({ id: 'a', state: 'review', due: Date.now() }),
+      card({ id: 'a', state: 'review', due: now }),
       card({ id: 'b', state: 'new', due: 0 }),
     ]
-    const next = continueQueue(rest, updated, 'normal')
-    expect(next.map((item) => item.id)).toEqual(['learn', 'a', 'b'])
+    expect(continueQueue(rest, updated, 'normal', now).map((item) => item.id)).toEqual(
+      ['a', 'b', 'learn'],
+    )
   })
 
-  it('keeps reinserted learning cards ahead of review and new', () => {
+  it('inserts an already-due learning card among other due learning', () => {
     const now = Date.now()
     const updated = card({
-      id: 'later',
+      id: 'now',
       state: 'learning',
-      due: now + 10 * 60 * 1000,
+      due: now - 1000,
     })
     const rest = [
       card({ id: 'soon', state: 'learning', due: now + 60 * 1000 }),
       card({ id: 'rev', state: 'review', due: now }),
     ]
     expect(continueQueue(rest, updated, 'normal', now).map((item) => item.id)).toEqual(
-      ['soon', 'later', 'rev'],
+      ['now', 'rev', 'soon'],
     )
+  })
+
+  it('ends the session when only a future learning card remains', () => {
+    const now = Date.now()
+    const updated = card({
+      id: 'learn',
+      state: 'learning',
+      due: now + 10 * 60 * 1000,
+    })
+    expect(continueQueue([], updated, 'normal', now)).toEqual([])
   })
 
   it('does not reinsert after a custom rating', () => {

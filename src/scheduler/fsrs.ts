@@ -7,7 +7,7 @@ import {
   type Grade,
 } from 'ts-fsrs'
 import type { Card, CardState, RatingValue } from '../db/schema'
-import { formatDueInterval } from '../utils/dates'
+import { formatPreviewLabel } from '../utils/dates'
 
 const scheduler = fsrs()
 
@@ -85,9 +85,16 @@ export function previewRatings(
   for (const grade of [Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as Grade[]) {
     const item = preview[grade]
     const due = item.card.due.getTime()
+    const learning =
+      item.card.state === State.Learning || item.card.state === State.Relearning
     result[grade as RatingValue] = {
       due,
-      label: formatDueInterval(due, now.getTime()),
+      label: formatPreviewLabel({
+        due,
+        now: now.getTime(),
+        scheduledDays: item.card.scheduled_days,
+        learning,
+      }),
     }
   }
   return result
