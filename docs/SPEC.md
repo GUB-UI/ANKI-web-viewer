@@ -103,7 +103,7 @@ GitHub Pages では HashRouter（`#/`）。
 
 ## 10. UI トーン
 
-澄み渡り（Sumiwatari）+ Liquid Glass。フォントは SF Pro / `-apple-system`。シェル幅 480px、セーフエリア対応。
+澄み渡り（Sumiwatari）+ Liquid Glass。フォントは SF Pro / `-apple-system`。シェル幅 480px、セーフエリア対応。ダークは有機EL向けに紙面を `#000`（にじみ・方眼は出さない）。「答えを見る」は indigo 塗りではなく、カード／評価ドックと同じガラス。
 
 ## 11. 既知の制限
 

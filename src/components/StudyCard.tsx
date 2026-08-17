@@ -380,7 +380,7 @@ export function StudyCardView({
       </div>
 
       {!showAnswer ? (
-        <button type="button" className="btn btn-primary reveal-btn" onClick={reveal}>
+        <button type="button" className="btn reveal-btn" onClick={reveal}>
           答えを見る
         </button>
       ) : (

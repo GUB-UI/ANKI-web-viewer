@@ -106,8 +106,8 @@
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  --paper: #0d121b;
-  --paper-deep: #141b27;
+  --paper: #000000;
+  --paper-deep: #000000;
 
   --ink: #eef2f7;
   --ink-soft: #b6c0cc;
@@ -119,10 +119,10 @@ html[data-theme='dark'] {
   --grid-line: rgba(238, 242, 247, 0.05);
   --ring-line: rgba(238, 242, 247, 0.04);
 
-  --bloom-indigo: rgba(112, 134, 240, 0.24);
-  --bloom-indigo-soft: rgba(112, 134, 240, 0.15);
-  --bloom-vermilion: rgba(226, 96, 104, 0.18);
-  --bloom-vermilion-soft: rgba(226, 96, 104, 0.11);
+  --bloom-indigo: transparent;
+  --bloom-indigo-soft: transparent;
+  --bloom-vermilion: transparent;
+  --bloom-vermilion-soft: transparent;
 
   --indigo: #93a5ff;
   --indigo-wash: rgba(147, 165, 255, 0.14);
@@ -137,17 +137,17 @@ html[data-theme='dark'] {
   --rate-hard: #ffd60a;
   --rate-good: #32d74b;
   --rate-easy: #64d2ff;
-  --on-accent: #0d121b;
+  --on-accent: #000000;
   --control-fill: rgba(233, 240, 252, 0.07);
   --control-fill-active: rgba(233, 240, 252, 0.13);
 
-  --glass: rgba(233, 240, 252, 0.07);
-  --glass-raised: rgba(233, 240, 252, 0.11);
-  --glass-dock: rgba(233, 240, 252, 0.1);
-  --glass-edge: rgba(233, 240, 252, 0.16);
-  --glass-sheen: rgba(233, 240, 252, 0.2);
-  --glass-inner-top: rgba(233, 240, 252, 0.22);
-  --glass-inner-bottom: rgba(233, 240, 252, 0.06);
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-raised: rgba(255, 255, 255, 0.09);
+  --glass-dock: rgba(255, 255, 255, 0.08);
+  --glass-edge: rgba(255, 255, 255, 0.14);
+  --glass-sheen: rgba(255, 255, 255, 0.16);
+  --glass-inner-top: rgba(255, 255, 255, 0.18);
+  --glass-inner-bottom: rgba(255, 255, 255, 0.04);
   --glass-cast:
     0 26px 60px -34px rgba(0, 0, 0, 0.7),
     0 4px 14px -10px rgba(0, 0, 0, 0.5);
@@ -155,7 +155,7 @@ html[data-theme='dark'] {
     0 40px 90px -40px rgba(0, 0, 0, 0.8),
     0 8px 22px -14px rgba(0, 0, 0, 0.55);
 
-  --surface-solid: rgba(20, 27, 39, 0.92);
+  --surface-solid: #000000;
 }
 
 *,
@@ -168,6 +168,7 @@ html,
 body,
 #root {
   min-height: 100%;
+  background-color: var(--paper);
 }
 
 body {
@@ -214,6 +215,11 @@ body::after {
   background-size: 100% 100%, 88px 88px, 88px 88px;
   -webkit-mask-image: radial-gradient(126% 92% at 50% 0%, #000 10%, transparent 80%);
   mask-image: radial-gradient(126% 92% at 50% 0%, #000 10%, transparent 80%);
+}
+
+html[data-theme='dark'] body::before,
+html[data-theme='dark'] body::after {
+  display: none;
 }
 
 #root {
@@ -1038,7 +1044,12 @@ html[data-theme='dark'] .btn-primary {
   width: 100%;
   min-height: 56px;
   margin-top: auto;
+  border-radius: var(--radius-lg);
+  border-color: var(--glass-edge);
+  background: var(--glass);
+  color: var(--ink-soft);
   font-size: 1rem;
+  font-weight: 500;
   letter-spacing: 0.08em;
 }
 
