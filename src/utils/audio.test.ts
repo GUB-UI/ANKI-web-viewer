@@ -117,6 +117,7 @@ describe('audio unlock/playback (Web Audio)', () => {
     await mod.unlockAudio()
     const blob = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'audio/mpeg' })
     await expect(mod.playAudioBlobs([blob])).resolves.toBe(true)
+    expect(mod.AUDIO_GAIN_AT_100).toBeGreaterThanOrEqual(2)
   })
 
   it('stopAudioPlayback is safe before and after unlock', async () => {

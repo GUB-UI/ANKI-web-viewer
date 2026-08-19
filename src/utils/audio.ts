@@ -28,25 +28,31 @@ let unlocked = false
 let unlockPromise: Promise<boolean> | null = null
 let audioCtx: AudioContext | null = null
 let masterGain: GainNode | null = null
-let outputVolume = 1
+/** 100% is above unity so quiet Anki clips are audible on iPhone. */
+export const AUDIO_GAIN_AT_100 = 2.5
+let outputVolume = AUDIO_GAIN_AT_100
 let activeSource: AudioBufferSourceNode | null = null
 let activeFinish: ((ok: boolean) => void) | null = null
 let htmlPlayer: HTMLAudioElement | null = null
 let htmlWaiter: ((ok: boolean) => void) | null = null
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null
 
+function htmlVolume(): number {
+  return Math.min(1, Math.max(0, outputVolume))
+}
+
 /** In-app loudness 0–100. Device hardware volume is separate. */
 export function setAudioVolume(percent: number): void {
   const clamped = Number.isFinite(percent)
     ? Math.min(100, Math.max(0, Math.round(percent)))
     : 100
-  outputVolume = clamped / 100
+  outputVolume = (clamped / 100) * AUDIO_GAIN_AT_100
   if (masterGain) masterGain.gain.value = outputVolume
-  if (htmlPlayer) htmlPlayer.volume = outputVolume
+  if (htmlPlayer) htmlPlayer.volume = htmlVolume()
 }
 
 export function getAudioVolume(): number {
-  return Math.round(outputVolume * 100)
+  return Math.round((outputVolume / AUDIO_GAIN_AT_100) * 100)
 }
 
 function getMasterGain(ctx: AudioContext): GainNode {
@@ -101,7 +107,7 @@ function getHtmlPlayer(): HTMLAudioElement {
     ;(htmlPlayer as HTMLAudioElement & { playsInline?: boolean }).playsInline =
       true
   }
-  htmlPlayer.volume = outputVolume
+  htmlPlayer.volume = htmlVolume()
   return htmlPlayer
 }
 
@@ -265,7 +271,7 @@ async function playViaHtmlAudio(
     audio.src = url
     audio.load()
     audio.muted = false
-    audio.volume = outputVolume
+    audio.volume = htmlVolume()
     try {
       await audio.play()
     } catch {
