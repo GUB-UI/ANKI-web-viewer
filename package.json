@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "node scripts/make-sample-apkg.mjs e2e/fixtures && playwright test",
+    "test:e2e": "node scripts/make-sample-apkg.mjs e2e/fixtures --force && playwright test",
     "fixture:apkg": "node scripts/make-sample-apkg.mjs e2e/fixtures --force",
     "icons": "node scripts/make-icons.mjs"
   },
