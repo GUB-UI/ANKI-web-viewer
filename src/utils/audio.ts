@@ -27,11 +27,35 @@ function AudioCtxCtor(): typeof AudioContext {
 let unlocked = false
 let unlockPromise: Promise<boolean> | null = null
 let audioCtx: AudioContext | null = null
+let masterGain: GainNode | null = null
+let outputVolume = 1
 let activeSource: AudioBufferSourceNode | null = null
 let activeFinish: ((ok: boolean) => void) | null = null
 let htmlPlayer: HTMLAudioElement | null = null
 let htmlWaiter: ((ok: boolean) => void) | null = null
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null
+
+/** In-app loudness 0–100. Device hardware volume is separate. */
+export function setAudioVolume(percent: number): void {
+  const clamped = Number.isFinite(percent)
+    ? Math.min(100, Math.max(0, Math.round(percent)))
+    : 100
+  outputVolume = clamped / 100
+  if (masterGain) masterGain.gain.value = outputVolume
+  if (htmlPlayer) htmlPlayer.volume = outputVolume
+}
+
+export function getAudioVolume(): number {
+  return Math.round(outputVolume * 100)
+}
+
+function getMasterGain(ctx: AudioContext): GainNode {
+  if (masterGain && masterGain.context === ctx) return masterGain
+  masterGain = ctx.createGain()
+  masterGain.gain.value = outputVolume
+  masterGain.connect(ctx.destination)
+  return masterGain
+}
 
 function tickSilence(ctx: AudioContext): void {
   try {
@@ -77,6 +101,7 @@ function getHtmlPlayer(): HTMLAudioElement {
     ;(htmlPlayer as HTMLAudioElement & { playsInline?: boolean }).playsInline =
       true
   }
+  htmlPlayer.volume = outputVolume
   return htmlPlayer
 }
 
@@ -195,7 +220,7 @@ async function playViaWebAudio(
     const source = ctx.createBufferSource()
     activeSource = source
     source.buffer = audioBuffer
-    source.connect(ctx.destination)
+    source.connect(getMasterGain(ctx))
     let settled = false
     const finish = (ok: boolean) => {
       if (settled) return
@@ -240,7 +265,7 @@ async function playViaHtmlAudio(
     audio.src = url
     audio.load()
     audio.muted = false
-    audio.volume = 1
+    audio.volume = outputVolume
     try {
       await audio.play()
     } catch {

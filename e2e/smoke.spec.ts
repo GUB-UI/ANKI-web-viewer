@@ -66,6 +66,7 @@ test.describe('Kioku MVP smoke', () => {
     await page.getByRole('link', { name: 'デッキへ戻る' }).click()
     await page.getByRole('link', { name: '設定' }).click()
     await expect(page.getByRole('heading', { name: '設定' })).toBeVisible()
+    await expect(page.getByLabel('カードの音量')).toBeVisible()
     await expect(page.getByRole('button', { name: 'バックアップを書き出す' })).toBeVisible()
   })
 

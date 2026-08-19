@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import { setAudioVolume } from '../utils/audio'
 import type {
   AppSettings,
   Card,
@@ -92,6 +93,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   swipeEnabled: true,
   autoFlipEnabled: false,
   autoFlipSeconds: 5,
+  audioVolume: 100,
   theme: 'system',
 }
 
@@ -99,6 +101,7 @@ export async function ensureSettings(): Promise<AppSettings> {
   const existing = await db.settings.get('settings')
   if (!existing) {
     await db.settings.put(DEFAULT_SETTINGS)
+    setAudioVolume(DEFAULT_SETTINGS.audioVolume)
     return DEFAULT_SETTINGS
   }
   const merged: AppSettings = {
@@ -108,20 +111,31 @@ export async function ensureSettings(): Promise<AppSettings> {
     autoFlipSeconds: clampAutoFlipSeconds(
       existing.autoFlipSeconds ?? DEFAULT_SETTINGS.autoFlipSeconds,
     ),
+    audioVolume: clampAudioVolume(
+      existing.audioVolume ?? DEFAULT_SETTINGS.audioVolume,
+    ),
   }
   if (
     existing.autoFlipEnabled == null ||
     existing.autoFlipSeconds == null ||
-    existing.autoFlipSeconds !== merged.autoFlipSeconds
+    existing.autoFlipSeconds !== merged.autoFlipSeconds ||
+    existing.audioVolume == null ||
+    existing.audioVolume !== merged.audioVolume
   ) {
     await db.settings.put(merged)
   }
+  setAudioVolume(merged.audioVolume)
   return merged
 }
 
 function clampAutoFlipSeconds(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_SETTINGS.autoFlipSeconds
   return Math.min(60, Math.max(1, Math.round(value)))
+}
+
+export function clampAudioVolume(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_SETTINGS.audioVolume
+  return Math.min(100, Math.max(0, Math.round(value)))
 }
 
 export async function requestPersistentStorage(): Promise<boolean> {
@@ -145,4 +159,5 @@ export async function clearAllData(): Promise<void> {
     db.dailyOverrides.clear(),
   ])
   await db.settings.put(DEFAULT_SETTINGS)
+  setAudioVolume(DEFAULT_SETTINGS.audioVolume)
 }

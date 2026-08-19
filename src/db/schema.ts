@@ -82,6 +82,8 @@ export interface AppSettings {
   autoFlipEnabled: boolean
   /** Seconds to wait on the question face before auto-reveal (1–60) */
   autoFlipSeconds: number
+  /** Card audio loudness, 0–100. Independent of the device hardware volume. */
+  audioVolume: number
   theme: ThemeMode
   lastBackupAt?: number
 }
