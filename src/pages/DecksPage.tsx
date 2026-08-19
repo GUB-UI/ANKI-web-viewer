@@ -3,20 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import { liveQuery } from 'dexie'
 import { ActionSheet } from '../components/ActionSheet'
 import { DeckTree } from '../components/DeckTree'
-import { db, ensureSettings, requestPersistentStorage } from '../db/database'
+import { ensureSettings, requestPersistentStorage } from '../db/database'
 import type { Deck } from '../db/schema'
-import {
-  countActiveNewByDeck,
-  fetchDueCountsByDeck,
-} from '../study/cardQueries'
-import { loadDailyNewContext } from '../study/dailyNew'
-import {
-  buildDeckForest,
-  computeDeckCounts,
-  totalDue,
-} from '../study/deckTree'
-import { LEARNING_RESTORE_WINDOW_MS } from '../study/queue'
-import { unlockAudio } from '../utils/audio'
+import { buildDeckForest, snapshotHomeState, totalDue } from '../study'
+import { stopAudioKeepAlive, unlockAudio } from '../utils/audio'
 
 export function DecksPage() {
   const navigate = useNavigate()
@@ -32,44 +22,12 @@ export function DecksPage() {
   useEffect(() => {
     void ensureSettings()
     void requestPersistentStorage()
+    stopAudioKeepAlive()
   }, [])
 
   useEffect(() => {
-    const sub = liveQuery(async () => {
-      const deckList = await db.decks.toArray()
-      const deckIds = deckList.map((deck) => deck.id)
-      const now = Date.now()
-      const dailyNew = await loadDailyNewContext(now, deckList)
-      const [dueByDeck, availableNewByDeck] = await Promise.all([
-        fetchDueCountsByDeck(
-          deckIds,
-          now,
-          now + LEARNING_RESTORE_WINDOW_MS,
-        ),
-        countActiveNewByDeck(deckIds),
-      ])
-      const c = computeDeckCounts(
-        deckList,
-        dueByDeck,
-        availableNewByDeck,
-        dailyNew,
-      )
-      const t = deckList
-        .filter((deck) => !deck.parentId)
-        .reduce(
-          (total, root) => {
-            const count = c.get(root.id)
-            if (count) {
-              total.new += count.new
-              total.review += count.review + count.learning
-            }
-            return total
-          },
-          { new: 0, review: 0 },
-        )
-      return { deckList, c, t }
-    }).subscribe({
-      next: ({ deckList, c, t }) => {
+    const sub = liveQuery(async () => snapshotHomeState()).subscribe({
+      next: ({ decks: deckList, counts: c, today: t }) => {
         setLoadError('')
         setDecks(deckList)
         setCounts(c)
@@ -120,6 +78,9 @@ export function DecksPage() {
           <span className="brand-jp">記憶</span>
         </div>
         <div className="header-actions">
+          <Link to="/stats" className="icon-btn" aria-label="統計">
+            ▦
+          </Link>
           <Link to="/import" className="icon-btn" aria-label="インポート">
             ＋
           </Link>
@@ -189,6 +150,10 @@ export function DecksPage() {
             {
               label: 'カスタム学習',
               onClick: () => navigate(`/custom/${menuDeck.id}`),
+            },
+            {
+              label: '統計',
+              onClick: () => navigate(`/stats/${menuDeck.id}`),
             },
           ]}
           onClose={() => setMenuDeck(null)}

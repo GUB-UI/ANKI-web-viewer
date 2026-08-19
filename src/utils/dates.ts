@@ -13,17 +13,37 @@ export function daysAgoMs(days: number, from = new Date()): number {
   return from.getTime() - days * 24 * 60 * 60 * 1000
 }
 
-export function formatDueInterval(ms: number, now = Date.now()): string {
-  const diff = Math.max(0, ms - now)
-  const minutes = Math.round(diff / 60000)
+/** Wall-clock delay for learning steps (sub-day). */
+export function formatShortDelay(ms: number): string {
+  const minutes = Math.round(Math.max(0, ms) / 60_000)
   if (minutes < 60) return `${Math.max(1, minutes)}m`
   const hours = Math.round(minutes / 60)
   if (hours < 24) return `${hours}h`
-  const days = Math.round(hours / 24)
-  if (days < 30) return `${days}d`
-  const months = Math.round(days / 30)
-  if (months < 12) return `${months}mo`
-  return `${Math.round(days / 365)}y`
+  return formatScheduledDays(hours / 24)
+}
+
+/** FSRS scheduled_days for review cards — do not round via hours. */
+export function formatScheduledDays(days: number): string {
+  const whole = Math.max(1, Math.round(days))
+  if (whole < 100) return `${whole}d`
+  if (whole < 365) return `${Math.round(whole / 30)}mo`
+  return `${Math.round(whole / 365)}y`
+}
+
+export function formatPreviewLabel(opts: {
+  due: number
+  now: number
+  scheduledDays: number
+  learning: boolean
+}): string {
+  if (!opts.learning && opts.scheduledDays >= 1) {
+    return formatScheduledDays(opts.scheduledDays)
+  }
+  return formatShortDelay(opts.due - opts.now)
+}
+
+export function formatDueInterval(ms: number, now = Date.now()): string {
+  return formatShortDelay(ms - now)
 }
 
 export function formatBackupDate(ts?: number): string {

@@ -31,13 +31,23 @@ export function extractMediaFilenames(html: string): string[] {
   return [...names]
 }
 
+function normalizeMediaName(raw: string): string {
+  const trimmed = raw.trim().replace(/^\.\//, '').split(/[?#]/)[0] ?? ''
+  try {
+    return decodeURIComponent(trimmed)
+  } catch {
+    return trimmed
+  }
+}
+
 export function replaceSoundTags(html: string): {
   html: string
   sounds: string[]
 } {
   const sounds: string[] = []
   const cleaned = html.replace(SOUND_RE, (_full, filename: string) => {
-    sounds.push(filename.trim().replace(/^\.\//, ''))
+    const name = normalizeMediaName(filename)
+    if (name) sounds.push(name)
     return ''
   })
   return { html: cleaned, sounds }

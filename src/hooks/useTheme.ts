@@ -46,6 +46,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolved
+    const color = resolved === 'dark' ? '#000000' : '#f6f7f9'
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+      meta.setAttribute('content', color)
+    })
   }, [resolved])
 
   useEffect(() => {

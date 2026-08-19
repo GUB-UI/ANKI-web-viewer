@@ -221,6 +221,15 @@ async function parseAndValidate(zip: JSZip): Promise<BackupPayload> {
   } else {
     settings.autoFlipSeconds = Math.round(settings.autoFlipSeconds)
   }
+  if (
+    !Number.isFinite(settings.audioVolume) ||
+    settings.audioVolume < 0 ||
+    settings.audioVolume > 100
+  ) {
+    settings.audioVolume = 100
+  } else {
+    settings.audioVolume = Math.round(settings.audioVolume)
+  }
 
   const filenameSet = new Set<string>()
   const media: MediaFile[] = []

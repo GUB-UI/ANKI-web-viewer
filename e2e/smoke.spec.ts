@@ -66,6 +66,7 @@ test.describe('Kioku MVP smoke', () => {
     await page.getByRole('link', { name: 'デッキへ戻る' }).click()
     await page.getByRole('link', { name: '設定' }).click()
     await expect(page.getByRole('heading', { name: '設定' })).toBeVisible()
+    await expect(page.getByLabel('カードの音量')).toBeVisible()
     await expect(page.getByRole('button', { name: 'バックアップを書き出す' })).toBeVisible()
   })
 
@@ -117,5 +118,34 @@ test.describe('Kioku MVP smoke', () => {
     await page.getByRole('button', { name: '学習開始' }).click()
     await expect(page.locator('.auto-flip-countdown')).toBeVisible()
     await expect(page.locator('.rating-dock')).toBeVisible({ timeout: 3000 })
+    await expect(page.locator('.rating-btn').first()).toBeDisabled()
+    await expect(page.locator('.rating-btn').first()).toBeEnabled({ timeout: 1500 })
+  })
+
+  test('stats page counts a review in Today', async ({ page }) => {
+    await page.goto('./')
+    await page.getByRole('link', { name: '統計' }).click()
+    await expect(page.getByRole('heading', { name: '統計' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '今日' })).toBeVisible()
+
+    await page.getByRole('link', { name: '戻る' }).click()
+    await page.getByRole('link', { name: 'インポート' }).click()
+    await page.locator('input[type="file"]').setInputFiles(apkg)
+    await expect(page.getByText('Import完了')).toBeVisible({ timeout: 30000 })
+    await page.getByRole('button', { name: 'デッキを見る' }).click()
+
+    await page.getByRole('button', { name: 'メニュー' }).first().click()
+    await page.getByRole('button', { name: '学習開始' }).click()
+    await page.getByRole('button', { name: '答えを見る' }).click()
+    await page.getByRole('button', { name: /Good/ }).click()
+    await expect(
+      page
+        .getByRole('button', { name: '答えを見る' })
+        .or(page.getByRole('heading', { name: '完了' })),
+    ).toBeVisible()
+
+    await page.getByRole('link', { name: '戻る' }).click()
+    await page.getByRole('link', { name: '統計' }).click()
+    await expect(page.getByText(/[1-9]\s*回/)).toBeVisible()
   })
 })

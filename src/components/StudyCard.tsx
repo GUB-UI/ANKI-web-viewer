@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RatingValue } from '../db/schema'
 import { rewriteMediaUrls, type RenderedCard } from '../utils/cardRender'
-import { useMediaUrls } from '../hooks/useMediaUrls'
+import { useMediaEntries } from '../hooks/useMediaUrls'
 import { extractMediaFilenames } from '../utils/mediaRefs'
 import { sanitizeCardHtml } from '../utils/sanitizeCardHtml'
 import {
-  playAudioUrls,
+  extraAnswerSounds,
+  pickQuestionSounds,
+  playAudioBlobs,
   stopAudioPlayback,
   unlockAudio,
+  type SoundResolve,
 } from '../utils/audio'
 import { RatingButtons } from './RatingButtons'
 
@@ -16,7 +19,8 @@ interface Props {
   showAnswer: boolean
   onReveal: () => void
   previews: Record<RatingValue, { label: string }>
-  onRate: (rating: RatingValue) => void
+  onRate: (rating: RatingValue, durationMs: number) => void
+  answering?: boolean
   swipeEnabled: boolean
   autoFlipEnabled: boolean
   autoFlipSeconds: number
@@ -24,16 +28,24 @@ interface Props {
 
 const SWIPE_THRESHOLD = 96
 const FLY_PX = 480
+const RATING_FREEZE_MS = 500
 
-function resolveUrls(
+function resolveSounds(
   filenames: string[],
-  urlMap: Map<string, string>,
-): string[] | null {
-  if (filenames.length === 0) return []
-  const urls = filenames
-    .map((name) => urlMap.get(name))
-    .filter((url): url is string => Boolean(url))
-  return urls.length === filenames.length ? urls : null
+  blobs: Map<string, Blob>,
+  ready: boolean,
+): SoundResolve {
+  if (filenames.length === 0) return { status: 'empty' }
+  if (!ready) return { status: 'loading' }
+  const resolved: Blob[] = []
+  const missing: string[] = []
+  for (const name of filenames) {
+    const blob = blobs.get(name) ?? blobs.get(name.toLowerCase())
+    if (blob) resolved.push(blob)
+    else missing.push(name)
+  }
+  if (missing.length > 0) return { status: 'missing', names: missing }
+  return { status: 'ready', blobs: resolved }
 }
 
 function clamp01(value: number): number {
@@ -46,6 +58,7 @@ export function StudyCardView({
   onReveal,
   previews,
   onRate,
+  answering = false,
   swipeEnabled,
   autoFlipEnabled,
   autoFlipSeconds,
@@ -60,7 +73,9 @@ export function StudyCardView({
     return [...names]
   }, [rendered])
 
-  const urlMap = useMediaUrls(allMedia)
+  const { urls: urlMap, blobs: blobMap, ready: mediaReady } =
+    useMediaEntries(allMedia)
+
   const front = useMemo(
     () => sanitizeCardHtml(rewriteMediaUrls(rendered.frontHtml, urlMap)),
     [rendered.frontHtml, urlMap],
@@ -70,24 +85,76 @@ export function StudyCardView({
     [rendered.backHtml, urlMap],
   )
 
+  const frontSounds = useMemo(
+    () => resolveSounds(rendered.frontSounds, blobMap, mediaReady),
+    [rendered.frontSounds, blobMap, mediaReady],
+  )
+  const backSounds = useMemo(
+    () => resolveSounds(rendered.backSounds, blobMap, mediaReady),
+    [rendered.backSounds, blobMap, mediaReady],
+  )
+
+  const questionSounds = useMemo(
+    () => pickQuestionSounds(frontSounds, backSounds),
+    [frontSounds, backSounds],
+  )
+
+  const answerExtraNames = useMemo(
+    () => extraAnswerSounds(rendered.frontSounds, rendered.backSounds),
+    [rendered.frontSounds, rendered.backSounds],
+  )
+  const answerExtraSounds = useMemo(
+    () => resolveSounds(answerExtraNames, blobMap, mediaReady),
+    [answerExtraNames, blobMap, mediaReady],
+  )
+
+  const questionPlayKey =
+    questionSounds.status === 'ready'
+      ? `q:${rendered.frontSounds.join('|')}:${rendered.backSounds.join('|')}:${questionSounds.blobs.length}`
+      : questionSounds.status
+
+  const answerPlayKey =
+    answerExtraSounds.status === 'ready'
+      ? `a:${answerExtraNames.join('|')}:${answerExtraSounds.blobs.length}`
+      : answerExtraSounds.status
+
   const [offsetX, setOffsetX] = useState(0)
   const [swiping, setSwiping] = useState(false)
   const [flying, setFlying] = useState<'left' | 'right' | null>(null)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [ratingFrozen, setRatingFrozen] = useState(false)
   const startX = useRef<number | null>(null)
+  const shownAtRef = useRef(Date.now())
   const offsetRef = useRef(0)
-  const playedFront = useRef(false)
+  const playedQuestion = useRef(false)
   const playedBack = useRef(false)
   const busyRef = useRef(false)
+  const freezeTimerRef = useRef<number | null>(null)
+
+  function startRatingFreeze() {
+    setRatingFrozen(true)
+    if (freezeTimerRef.current != null) window.clearTimeout(freezeTimerRef.current)
+    freezeTimerRef.current = window.setTimeout(() => {
+      setRatingFrozen(false)
+      freezeTimerRef.current = null
+    }, RATING_FREEZE_MS)
+  }
 
   useEffect(() => {
-    playedFront.current = false
+    playedQuestion.current = false
     playedBack.current = false
     busyRef.current = false
     setOffsetX(0)
     setSwiping(false)
     setFlying(null)
+    setRatingFrozen(false)
+    if (freezeTimerRef.current != null) {
+      window.clearTimeout(freezeTimerRef.current)
+      freezeTimerRef.current = null
+    }
     offsetRef.current = 0
+    shownAtRef.current = Date.now()
+    stopAudioPlayback()
   }, [
     rendered.frontHtml,
     rendered.backHtml,
@@ -95,51 +162,67 @@ export function StudyCardView({
     rendered.backSounds,
   ])
 
-  // Play the question the moment the card face is ready — not on reveal.
+  useEffect(
+    () => () => {
+      if (freezeTimerRef.current != null) window.clearTimeout(freezeTimerRef.current)
+    },
+    [],
+  )
+
+  // Play as soon as the front face is up and media is ready — never after flip.
+  // Do not stop() in cleanup: StrictMode / object-identity reruns were killing
+  // front audio, so the first audible play became the reveal gesture.
   useEffect(() => {
-    if (showAnswer || playedFront.current) return
-    const urls = resolveUrls(rendered.frontSounds, urlMap)
-    if (!urls) return
-    if (urls.length === 0) {
-      playedFront.current = true
+    if (showAnswer) {
+      if (questionSounds.status !== 'loading') playedQuestion.current = true
       return
     }
+    if (playedQuestion.current) return
+    if (questionSounds.status === 'loading') return
+    if (
+      questionSounds.status === 'empty' ||
+      questionSounds.status === 'missing'
+    ) {
+      playedQuestion.current = true
+      return
+    }
+
     const signal = { cancelled: false }
+    const blobs = questionSounds.blobs
     void (async () => {
-      await unlockAudio()
-      if (signal.cancelled || playedFront.current) return
-      const ok = await playAudioUrls(urls, signal)
-      if (ok && !signal.cancelled) playedFront.current = true
+      const ok = await playAudioBlobs(blobs, signal)
+      if (signal.cancelled) return
+      if (ok) playedQuestion.current = true
     })()
+
     return () => {
       signal.cancelled = true
-      stopAudioPlayback()
     }
-  }, [urlMap, showAnswer, rendered.frontSounds])
+  }, [questionPlayKey, showAnswer, questionSounds])
 
-  // Answer-side audio only after the answer is shown.
+  // Only files that were not already used as question audio.
   useEffect(() => {
     if (!showAnswer || playedBack.current) return
-    const urls = resolveUrls(rendered.backSounds, urlMap)
-    if (!urls) return
-    if (urls.length === 0) {
+    if (answerExtraSounds.status === 'loading') return
+    if (
+      answerExtraSounds.status === 'empty' ||
+      answerExtraSounds.status === 'missing'
+    ) {
       playedBack.current = true
       return
     }
     const signal = { cancelled: false }
+    const blobs = answerExtraSounds.blobs
     void (async () => {
-      await unlockAudio()
-      if (signal.cancelled || playedBack.current) return
-      const ok = await playAudioUrls(urls, signal)
-      if (ok && !signal.cancelled) playedBack.current = true
+      const ok = await playAudioBlobs(blobs, signal)
+      if (signal.cancelled) return
+      if (ok) playedBack.current = true
     })()
     return () => {
       signal.cancelled = true
-      stopAudioPlayback()
     }
-  }, [urlMap, showAnswer, rendered.backSounds])
+  }, [answerPlayKey, showAnswer, answerExtraSounds])
 
-  // Auto-flip: reveal the answer after N seconds on the question face.
   useEffect(() => {
     if (!autoFlipEnabled || showAnswer || flying) {
       setCountdown(null)
@@ -153,7 +236,10 @@ export function StudyCardView({
     }, 200)
     const timer = window.setTimeout(() => {
       setCountdown(0)
+      stopAudioPlayback()
+      playedQuestion.current = true
       void unlockAudio()
+      startRatingFreeze()
       onReveal()
     }, seconds * 1000)
     return () => {
@@ -163,7 +249,7 @@ export function StudyCardView({
   }, [autoFlipEnabled, autoFlipSeconds, showAnswer, flying, onReveal, rendered])
 
   function onPointerDown(e: React.PointerEvent) {
-    if (!showAnswer || !swipeEnabled || flying || busyRef.current) return
+    if (!showAnswer || !swipeEnabled || flying || busyRef.current || ratingFrozen) return
     startX.current = e.clientX
     setSwiping(true)
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
@@ -187,7 +273,6 @@ export function StudyCardView({
       return
     }
 
-    // 右 = Again, 左 = Good
     const rating: RatingValue = x > 0 ? 1 : 3
     const direction: 'left' | 'right' = x > 0 ? 'right' : 'left'
     busyRef.current = true
@@ -195,7 +280,7 @@ export function StudyCardView({
     setOffsetX(direction === 'right' ? FLY_PX : -FLY_PX)
     void unlockAudio()
     window.setTimeout(() => {
-      onRate(rating)
+      onRate(rating, Date.now() - shownAtRef.current)
     }, 220)
   }
 
@@ -210,14 +295,17 @@ export function StudyCardView({
   }
 
   function reveal() {
+    stopAudioPlayback()
+    playedQuestion.current = true
     void unlockAudio()
+    startRatingFreeze()
     onReveal()
   }
 
   function rate(rating: RatingValue) {
-    if (busyRef.current || flying) return
+    if (busyRef.current || flying || answering || ratingFrozen) return
     void unlockAudio()
-    onRate(rating)
+    onRate(rating, Date.now() - shownAtRef.current)
   }
 
   const progress = clamp01(Math.abs(offsetX) / SWIPE_THRESHOLD)
@@ -292,11 +380,15 @@ export function StudyCardView({
       </div>
 
       {!showAnswer ? (
-        <button type="button" className="btn btn-primary reveal-btn" onClick={reveal}>
+        <button type="button" className="btn reveal-btn" onClick={reveal}>
           答えを見る
         </button>
       ) : (
-        <RatingButtons previews={previews} onRate={rate} />
+        <RatingButtons
+          previews={previews}
+          onRate={rate}
+          disabled={answering || Boolean(flying) || ratingFrozen}
+        />
       )}
     </div>
   )

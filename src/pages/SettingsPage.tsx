@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import { downloadBlob, exportBackup } from '../backup/exportBackup'
 import { restoreBackup } from '../backup/importBackup'
 import { NumberStepper } from '../components/NumberStepper'
-import { clearAllData, db, ensureSettings } from '../db/database'
+import { clearAllData, db, ensureSettings, clampAudioVolume } from '../db/database'
 import type { AppSettings, ThemeMode } from '../db/schema'
 import { useTheme } from '../hooks/useTheme'
 import { formatBackupDate } from '../utils/dates'
+import { setAudioVolume } from '../utils/audio'
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -27,6 +28,7 @@ export function SettingsPage() {
         decks.map((d) => ({ ...d, newCardsPerDay: partial.newCardsPerDay! })),
       )
     }
+    if (partial.audioVolume != null) setAudioVolume(partial.audioVolume)
     setSettings((s) => (s ? { ...s, ...partial } : s))
   }
 
@@ -157,6 +159,30 @@ export function SettingsPage() {
             />
           </div>
         )}
+        <div className="field" style={{ marginTop: 16 }}>
+          <label htmlFor="audio-volume">カードの音量</label>
+          <p className="muted" style={{ margin: 0, fontSize: '0.82rem', lineHeight: 1.6 }}>
+            本体の音量とは別に、カード音声だけを調整します
+          </p>
+          <div className="volume-row">
+            <input
+              id="audio-volume"
+              className="volume-slider"
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={settings.audioVolume}
+              aria-valuetext={`${settings.audioVolume}%`}
+              onChange={(e) =>
+                void patch({ audioVolume: clampAudioVolume(Number(e.target.value)) })
+              }
+            />
+            <output htmlFor="audio-volume" className="volume-value">
+              {settings.audioVolume}%
+            </output>
+          </div>
+        </div>
       </section>
 
       <section className="section">

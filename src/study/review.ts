@@ -1,3 +1,4 @@
+import { capDurationMs } from '../db/reviewFields'
 import { db } from '../db/database'
 import type { Card, RatingValue, ReviewSource } from '../db/schema'
 import { scheduleCard } from '../scheduler/fsrs'
@@ -8,9 +9,11 @@ export async function answerCard(
   card: Card,
   rating: RatingValue,
   source: ReviewSource,
+  durationMs?: number,
 ): Promise<Card> {
+  const duration = capDurationMs(durationMs)
   if (source === 'custom') {
-    await recordCustomReview(card.id, card.deckId, rating)
+    await recordCustomReview(card.id, card.deckId, rating, duration)
     return card
   }
 
@@ -29,6 +32,8 @@ export async function answerCard(
       scheduledDays,
       elapsedDays,
       stateBefore: card.state,
+      durationMs: duration,
+      intervalBefore: card.scheduledDays,
     })
   })
 

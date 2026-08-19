@@ -63,7 +63,7 @@ export async function countFailedCards(
   return { count: againCounts.size, againCounts }
 }
 
-export async function buildFailedCardsQueue(
+async function buildFailedCardsQueue(
   rootDeckId: string,
   days: number,
 ): Promise<Card[]> {
@@ -74,10 +74,39 @@ export async function buildFailedCardsQueue(
   return cards.filter((c): c is Card => c != null)
 }
 
+function customQueueKey(deckId: string): string {
+  return `customQueue:${deckId}`
+}
+
+function saveCustomQueue(deckId: string, ids: string[]): void {
+  sessionStorage.setItem(customQueueKey(deckId), JSON.stringify(ids))
+}
+
+export async function loadCustomQueue(deckId: string): Promise<Card[]> {
+  const raw = sessionStorage.getItem(customQueueKey(deckId))
+  const ids: string[] = raw ? (JSON.parse(raw) as string[]) : []
+  if (ids.length === 0) return []
+  const cards = await db.cards.bulkGet(ids)
+  return cards.filter((card): card is Card => card != null)
+}
+
+export async function beginFailedReview(
+  rootDeckId: string,
+  days: number,
+): Promise<Card[]> {
+  const cards = await buildFailedCardsQueue(rootDeckId, days)
+  saveCustomQueue(
+    rootDeckId,
+    cards.map((card) => card.id),
+  )
+  return cards
+}
+
 export async function recordCustomReview(
   cardId: string,
   deckId: string,
   rating: RatingValue,
+  durationMs?: number,
 ): Promise<void> {
   await db.reviewLogs.add({
     id: createId('rev'),
@@ -86,5 +115,6 @@ export async function recordCustomReview(
     reviewedAt: Date.now(),
     rating,
     source: 'custom',
+    durationMs,
   })
 }

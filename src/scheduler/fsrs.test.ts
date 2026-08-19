@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { applyFsrsDefaults, fromAnkiScheduling, scheduleCard } from './fsrs'
+import {
+  applyFsrsDefaults,
+  fromAnkiScheduling,
+  scheduleCard,
+  cardRetrievability,
+  previewRatings,
+  MIN_LEARNING_DUE_MS,
+} from './fsrs'
 import type { Card } from '../db/schema'
 
 function makeCard(partial: Partial<Card> = {}): Card {
@@ -59,5 +66,48 @@ describe('fsrs scheduler', () => {
     expect(scheduled.stability).toBe(4.5)
     expect(scheduled.difficulty).toBe(6.2)
     expect(scheduled.lastReview).toBe((crt + 60) * 1000)
+  })
+
+  it('keeps learning Again/Hard at least 15 minutes on new cards', () => {
+    const now = new Date('2026-08-15T12:00:00Z')
+    const card = makeCard({ state: 'new' })
+    const labels = previewRatings(card, now)
+    expect(labels[1].label).toBe('15m')
+    expect(labels[2].label).toBe('23m')
+    expect(labels[4].label).toBe('8d')
+
+    const again = scheduleCard(card, 1, now)
+    expect(again.next.state).toBe('learning')
+    expect(again.next.due).toBeGreaterThanOrEqual(now.getTime() + MIN_LEARNING_DUE_MS)
+
+    const reviewAgain = scheduleCard(
+      makeCard({
+        state: 'review',
+        stability: 10,
+        difficulty: 5,
+        lastReview: now.getTime() - 86400000,
+        elapsedDays: 1,
+        scheduledDays: 10,
+      }),
+      1,
+      now,
+    )
+    expect(reviewAgain.next.state).toBe('relearning')
+    expect(reviewAgain.next.due).toBeGreaterThanOrEqual(now.getTime() + MIN_LEARNING_DUE_MS)
+  })
+
+  it('returns retrievability for a reviewed card', () => {
+    const reviewed = makeCard({
+      state: 'review',
+      stability: 10,
+      difficulty: 5,
+      lastReview: Date.now() - 86400000,
+      elapsedDays: 1,
+      scheduledDays: 10,
+    })
+    const r = cardRetrievability(reviewed)
+    expect(r).toBeGreaterThan(0)
+    expect(r).toBeLessThanOrEqual(1)
+    expect(cardRetrievability(makeCard({ state: 'new' }))).toBeNull()
   })
 })

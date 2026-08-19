@@ -1,83 +1,414 @@
-/** Unlock and play card audio. iOS Safari only allows Audio.play() after a
- *  user gesture; once unlocked for the document, subsequent plays work. */
+/** Card audio for iOS / iPadOS Safari PWAs.
+ *
+ * HTMLAudioElement + blob: URLs is unreliable on WebKit (empty Blob.type after
+ * IndexedDB, canplay hangs, gesture approval quirks). Web Audio API is the
+ * reliable path:
+ *
+ *  1. On a user gesture: create/resume AudioContext and play a 1-sample buffer
+ *  2. Later: decodeAudioData(arrayBuffer) and BufferSource.start()
+ *
+ * HTMLAudioElement remains a fallback when decodeAudioData rejects a format.
+ */
+
+export type PlaybackSignal = { cancelled: boolean }
+
+type WebkitWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext
+  }
+
+type MixableAudioSession = { type: string }
+
+function applyMixableAudioSession(): void {
+  try {
+    const session = (navigator as Navigator & { audioSession?: MixableAudioSession })
+      .audioSession
+    if (session) session.type = 'ambient'
+  } catch {
+    // older WebKit
+  }
+}
+
+function AudioCtxCtor(): typeof AudioContext {
+  const root = globalThis as WebkitWindow
+  const Ctor = root.AudioContext ?? root.webkitAudioContext
+  if (!Ctor) throw new Error('AudioContext unavailable')
+  return Ctor
+}
 
 let unlocked = false
 let unlockPromise: Promise<boolean> | null = null
-let player: HTMLAudioElement | null = null
+let audioCtx: AudioContext | null = null
+let masterGain: GainNode | null = null
+/** 100% is above unity so quiet Anki clips are audible on iPhone. */
+export const AUDIO_GAIN_AT_100 = 2.5
+let outputVolume = AUDIO_GAIN_AT_100
+let activeSource: AudioBufferSourceNode | null = null
+let activeFinish: ((ok: boolean) => void) | null = null
+let htmlPlayer: HTMLAudioElement | null = null
+let htmlWaiter: ((ok: boolean) => void) | null = null
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null
 
-function getPlayer(): HTMLAudioElement {
-  player ??= new Audio()
-  return player
+function htmlVolume(): number {
+  return Math.min(1, Math.max(0, outputVolume))
 }
 
-/** Call from a tap handler (学習開始 / rating / reveal) before async work. */
+/** In-app loudness 0–100. Device hardware volume is separate. */
+export function setAudioVolume(percent: number): void {
+  const clamped = Number.isFinite(percent)
+    ? Math.min(100, Math.max(0, Math.round(percent)))
+    : 100
+  outputVolume = (clamped / 100) * AUDIO_GAIN_AT_100
+  if (masterGain) masterGain.gain.value = outputVolume
+  if (htmlPlayer) htmlPlayer.volume = htmlVolume()
+}
+
+export function getAudioVolume(): number {
+  return Math.round((outputVolume / AUDIO_GAIN_AT_100) * 100)
+}
+
+function getMasterGain(ctx: AudioContext): GainNode {
+  if (masterGain && masterGain.context === ctx) return masterGain
+  masterGain = ctx.createGain()
+  masterGain.gain.value = outputVolume
+  masterGain.connect(ctx.destination)
+  return masterGain
+}
+
+function tickSilence(ctx: AudioContext): void {
+  try {
+    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050)
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(ctx.destination)
+    source.start(0)
+  } catch {
+    // ignore
+  }
+}
+
+function startKeepAlive(ctx: AudioContext): void {
+  if (keepAliveTimer != null) return
+  // iOS may suspend the context between deck-tap and card media load.
+  // A periodic silent tick while studying keeps it runnable for front autoplay.
+  keepAliveTimer = setInterval(() => {
+    applyMixableAudioSession()
+    if (ctx.state === 'closed') return
+    if (ctx.state === 'suspended') {
+      void ctx.resume().then(() => applyMixableAudioSession())
+    }
+    tickSilence(ctx)
+  }, 2000)
+}
+
+export function stopAudioKeepAlive(): void {
+  if (keepAliveTimer == null) return
+  clearInterval(keepAliveTimer)
+  keepAliveTimer = null
+}
+
+function getContext(): AudioContext {
+  applyMixableAudioSession()
+  if (!audioCtx) {
+    audioCtx = new (AudioCtxCtor())()
+  }
+  return audioCtx
+}
+
+function getHtmlPlayer(): HTMLAudioElement {
+  if (!htmlPlayer) {
+    htmlPlayer = new Audio()
+    htmlPlayer.preload = 'auto'
+    htmlPlayer.setAttribute('playsinline', 'true')
+    ;(htmlPlayer as HTMLAudioElement & { playsInline?: boolean }).playsInline =
+      true
+  }
+  htmlPlayer.volume = htmlVolume()
+  return htmlPlayer
+}
+
+function finishHtmlWaiter(ok: boolean): void {
+  if (!htmlWaiter) return
+  const wait = htmlWaiter
+  htmlWaiter = null
+  wait(ok)
+}
+
+/** Call synchronously from a tap handler before any await. */
 export function unlockAudio(): Promise<boolean> {
-  if (unlocked) return Promise.resolve(true)
+  applyMixableAudioSession()
+  let ctx: AudioContext
+  try {
+    ctx = getContext()
+  } catch {
+    return Promise.resolve(false)
+  }
+
+  // Always invoke resume() in this call stack — required on iOS even when we
+  // think we are already unlocked (SPA navigation can suspend the context).
+  const resume = ctx.resume()
+  tickSilence(ctx)
+
+  if (unlocked && ctx.state === 'running') {
+    startKeepAlive(ctx)
+    return resume
+      .then(() => {
+        applyMixableAudioSession()
+        return true
+      })
+      .catch(() => true)
+  }
   if (unlockPromise) return unlockPromise
 
-  unlockPromise = (async () => {
-    try {
-      // Tiny silent WAV keeps the gesture chain alive without audible noise.
-      const silent =
-        'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA='
-      const audio = getPlayer()
-      audio.src = silent
-      audio.volume = 0.001
-      await audio.play()
-      audio.pause()
-      audio.currentTime = 0
-      audio.volume = 1
+  unlockPromise = resume
+    .then(() => {
       unlocked = true
+      applyMixableAudioSession()
+      startKeepAlive(ctx)
       return true
-    } catch {
+    })
+    .catch(() => {
       unlockPromise = null
       return false
-    }
-  })()
+    })
 
   return unlockPromise
 }
+
 
 export function isAudioUnlocked(): boolean {
   return unlocked
 }
 
 export function stopAudioPlayback(): void {
-  if (!player) return
-  player.pause()
+  if (activeSource) {
+    const source = activeSource
+    activeSource = null
+    source.onended = null
+    try {
+      source.stop()
+    } catch {
+      // already stopped
+    }
+    try {
+      source.disconnect()
+    } catch {
+      // ignore
+    }
+  }
+  if (activeFinish) {
+    const finish = activeFinish
+    activeFinish = null
+    finish(false)
+  }
+  if (htmlPlayer) {
+    htmlPlayer.pause()
+    finishHtmlWaiter(false)
+  }
 }
 
-/** Plays each URL in order. Returns false if the browser blocked playback. */
-export async function playAudioUrls(
-  urls: string[],
-  signal?: { cancelled: boolean },
+async function ensureRunning(
+  signal?: PlaybackSignal,
+): Promise<AudioContext | null> {
+  if (!unlocked) {
+    const ok = await unlockAudio()
+    if (!ok) return null
+  }
+  if (signal?.cancelled) return null
+  const ctx = getContext()
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume()
+    } catch {
+      return null
+    }
+  }
+  applyMixableAudioSession()
+  return ctx.state === 'closed' ? null : ctx
+}
+
+async function playViaWebAudio(
+  ctx: AudioContext,
+  data: ArrayBuffer,
+  signal?: PlaybackSignal,
 ): Promise<boolean> {
-  const audio = getPlayer()
-  for (const url of urls) {
-    if (signal?.cancelled) return true
-    audio.pause()
+  if (signal?.cancelled) return false
+
+  // Safari detaches the buffer; always copy first.
+  const copy = data.slice(0)
+  let audioBuffer: AudioBuffer
+  try {
+    audioBuffer = await ctx.decodeAudioData(copy)
+  } catch {
+    return false
+  }
+  if (signal?.cancelled) return false
+
+  stopAudioPlayback()
+
+  return new Promise<boolean>((resolve) => {
+    const source = ctx.createBufferSource()
+    activeSource = source
+    source.buffer = audioBuffer
+    source.connect(getMasterGain(ctx))
+    let settled = false
+    const finish = (ok: boolean) => {
+      if (settled) return
+      settled = true
+      if (activeSource === source) activeSource = null
+      if (activeFinish === finish) activeFinish = null
+      try {
+        source.disconnect()
+      } catch {
+        // ignore
+      }
+      resolve(ok)
+    }
+    activeFinish = finish
+    source.onended = () => finish(true)
+    try {
+      source.start(0)
+    } catch {
+      finish(false)
+      return
+    }
+    if (signal?.cancelled) {
+      try {
+        source.onended = null
+        source.stop()
+      } catch {
+        // ignore
+      }
+      finish(false)
+    }
+  })
+}
+
+async function playViaHtmlAudio(
+  blob: Blob,
+  signal?: PlaybackSignal,
+): Promise<boolean> {
+  if (signal?.cancelled) return false
+  const audio = getHtmlPlayer()
+  const url = URL.createObjectURL(blob)
+  try {
     audio.src = url
-    audio.currentTime = 0
+    audio.load()
+    audio.muted = false
+    audio.volume = htmlVolume()
+    applyMixableAudioSession()
     try {
       await audio.play()
     } catch {
       return false
     }
-    await new Promise<void>((resolve) => {
-      const finish = () => {
-        audio.removeEventListener('ended', finish)
-        audio.removeEventListener('error', finish)
-        audio.removeEventListener('pause', finish)
-        resolve()
+    if (signal?.cancelled) {
+      audio.pause()
+      return false
+    }
+    return await new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (ok: boolean) => {
+        if (settled) return
+        settled = true
+        audio.removeEventListener('ended', onEnded)
+        audio.removeEventListener('error', onError)
+        if (htmlWaiter === finish) htmlWaiter = null
+        resolve(ok)
       }
-      audio.addEventListener('ended', finish, { once: true })
-      audio.addEventListener('error', finish, { once: true })
-      audio.addEventListener('pause', finish, { once: true })
-      if (signal?.cancelled) {
-        audio.pause()
-        finish()
-      }
+      const onEnded = () => finish(true)
+      const onError = () => finish(false)
+      htmlWaiter = finish
+      audio.addEventListener('ended', onEnded)
+      audio.addEventListener('error', onError)
+      if (audio.ended) finish(true)
+      else if (audio.paused) finish(false)
     })
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+/** Play blobs in order (Web Audio first, HTMLAudio fallback). */
+export async function playAudioBlobs(
+  blobs: Blob[],
+  signal?: PlaybackSignal,
+): Promise<boolean> {
+  if (blobs.length === 0) return true
+  const ctx = await ensureRunning(signal)
+  if (!ctx) return false
+
+  for (const blob of blobs) {
+    if (signal?.cancelled) return false
+    const typed =
+      blob.type && blob.type !== 'application/octet-stream'
+        ? blob
+        : blob
+    let data: ArrayBuffer
+    try {
+      data = await typed.arrayBuffer()
+    } catch {
+      return false
+    }
+    if (signal?.cancelled) return false
+
+    const viaCtx = await playViaWebAudio(ctx, data, signal)
+    if (viaCtx) continue
+
+    // decodeAudioData rejected (unsupported codec) — try HTMLAudioElement.
+    const viaHtml = await playViaHtmlAudio(typed, signal)
+    if (!viaHtml) return false
   }
   return true
 }
+
+/** @deprecated Prefer playAudioBlobs — kept for any leftover URL-based callers. */
+export async function playAudioUrls(
+  urls: string[],
+  signal?: PlaybackSignal,
+): Promise<boolean> {
+  if (urls.length === 0) return true
+  const blobs: Blob[] = []
+  for (const url of urls) {
+    try {
+      const res = await fetch(url)
+      blobs.push(await res.blob())
+    } catch {
+      return false
+    }
+  }
+  return playAudioBlobs(blobs, signal)
+}
+
+export type SoundResolve =
+  | { status: 'empty' }
+  | { status: 'loading' }
+  | { status: 'missing'; names: string[] }
+  | { status: 'ready'; blobs: Blob[] }
+
+/** Question-face audio: front tags first, otherwise back tags (play on show, not on flip). */
+export function pickQuestionSounds(
+  front: SoundResolve,
+  back: SoundResolve,
+): SoundResolve {
+  if (front.status === 'loading' || back.status === 'loading') {
+    return { status: 'loading' }
+  }
+  if (front.status === 'ready') return front
+  if (back.status === 'ready') return back
+  if (front.status === 'missing') return front
+  if (back.status === 'missing') return back
+  return { status: 'empty' }
+}
+
+/** Answer-face extras: filenames that were not already used as question audio. */
+export function extraAnswerSounds(
+  frontNames: string[],
+  backNames: string[],
+): string[] {
+  if (backNames.length === 0) return []
+  const used = new Set(frontNames.map((name) => name.toLowerCase()))
+  if (frontNames.length === 0) return []
+  return backNames.filter((name) => !used.has(name.toLowerCase()))
+}
+

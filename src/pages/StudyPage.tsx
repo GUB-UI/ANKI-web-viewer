@@ -3,15 +3,17 @@ import { Link, useParams } from 'react-router-dom'
 import { StudyCardView } from '../components/StudyCard'
 import { db, ensureSettings } from '../db/database'
 import type { Card, Note, RatingValue, ReviewSource } from '../db/schema'
-import { previewRatings } from '../scheduler/fsrs'
+import {
+  applyRating,
+  loadStudyCards,
+  ratingPreviews,
+  remainingCounts,
+} from '../study'
 import { renderCardContent } from '../utils/cardRender'
-import { buildStudyQueue, LEARNING_RESTORE_WINDOW_MS } from '../study/queue'
-import { answerCard } from '../study/review'
 
 export function StudyPage({ source = 'normal' as ReviewSource }) {
   const { deckId = '' } = useParams()
   const [queue, setQueue] = useState<Card[]>([])
-  const [index, setIndex] = useState(0)
   const [note, setNote] = useState<Note | null>(null)
   const [deckPath, setDeckPath] = useState('')
   const [showAnswer, setShowAnswer] = useState(false)
@@ -22,7 +24,7 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
   const [busy, setBusy] = useState(false)
   const [answered, setAnswered] = useState(0)
 
-  const card = queue[index]
+  const card = queue[0]
 
   useEffect(() => {
     let alive = true
@@ -34,23 +36,9 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
       setAutoFlipEnabled(settings.autoFlipEnabled)
       setAutoFlipSeconds(settings.autoFlipSeconds)
 
-      if (source === 'custom') {
-        const raw = sessionStorage.getItem(`customQueue:${deckId}`)
-        const ids: string[] = raw ? (JSON.parse(raw) as string[]) : []
-        const cards = (await db.cards.bulkGet(ids)).filter((c): c is Card => c != null)
-        if (!alive) return
-        setQueue(cards)
-        setIndex(0)
-        setAnswered(0)
-        setShowAnswer(false)
-        setLoading(false)
-        return
-      }
-
-      const { cards } = await buildStudyQueue(deckId)
+      const cards = await loadStudyCards(deckId, source)
       if (!alive) return
       setQueue(cards)
-      setIndex(0)
       setAnswered(0)
       setShowAnswer(false)
       setLoading(false)
@@ -85,65 +73,30 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
     return renderCardContent(card, note, deckPath)
   }, [card, note, deckPath])
 
-  const previews = useMemo(() => {
-    if (!card || source === 'custom') {
-      return {
-        1: { label: '—', due: 0 },
-        2: { label: '—', due: 0 },
-        3: { label: '—', due: 0 },
-        4: { label: '—', due: 0 },
-      }
-    }
-    return previewRatings(card)
-  }, [card, source])
-
+  const previews = useMemo(() => ratingPreviews(card ?? null, source), [card, source])
   const reveal = useCallback(() => setShowAnswer(true), [])
 
-  async function onRate(rating: RatingValue) {
+  async function onRate(rating: RatingValue, durationMs: number) {
     if (!card || busy) return
     setBusy(true)
     try {
-      const updated = await answerCard(card, rating, source)
+      const { remaining } = await applyRating(
+        card,
+        rating,
+        source,
+        queue,
+        durationMs,
+      )
       setAnswered((n) => n + 1)
       setShowAnswer(false)
-
-      if (source === 'normal') {
-        const now = Date.now()
-        const stillLearning =
-          (updated.state === 'learning' || updated.state === 'relearning') &&
-          updated.due <= now + LEARNING_RESTORE_WINDOW_MS
-
-        setQueue((prev) => {
-          const rest = prev.slice(index + 1).filter((c) => c.id !== updated.id)
-          if (stillLearning) {
-            const insertAt = rest.findIndex((c) => c.due > updated.due)
-            if (insertAt === -1) rest.push(updated)
-            else rest.splice(insertAt, 0, updated)
-          }
-          return rest
-        })
-        setIndex(0)
-      } else {
-        setIndex((i) => i + 1)
-      }
+      setQueue(remaining)
     } finally {
       setBusy(false)
     }
   }
 
   const done = !loading && !card
-  const remaining = useMemo(() => {
-    const cards = source === 'custom' ? queue.slice(index) : queue
-    let neu = 0
-    let learning = 0
-    let review = 0
-    for (const item of cards) {
-      if (item.state === 'new') neu += 1
-      else if (item.state === 'learning' || item.state === 'relearning') learning += 1
-      else review += 1
-    }
-    return { new: neu, learning, review }
-  }, [queue, index, source])
+  const remaining = useMemo(() => remainingCounts(queue), [queue])
   const totalHint = answered + queue.length
   const progress = totalHint ? answered / totalHint : 0
 
@@ -201,6 +154,7 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
             onReveal={reveal}
             previews={previews}
             onRate={onRate}
+            answering={busy}
             swipeEnabled={swipeEnabled && showAnswer}
             autoFlipEnabled={autoFlipEnabled}
             autoFlipSeconds={autoFlipSeconds}
