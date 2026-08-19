@@ -17,6 +17,18 @@ type WebkitWindow = Window &
     webkitAudioContext?: typeof AudioContext
   }
 
+type MixableAudioSession = { type: string }
+
+function applyMixableAudioSession(): void {
+  try {
+    const session = (navigator as Navigator & { audioSession?: MixableAudioSession })
+      .audioSession
+    if (session) session.type = 'ambient'
+  } catch {
+    // older WebKit
+  }
+}
+
 function AudioCtxCtor(): typeof AudioContext {
   const root = globalThis as WebkitWindow
   const Ctor = root.AudioContext ?? root.webkitAudioContext
@@ -80,8 +92,11 @@ function startKeepAlive(ctx: AudioContext): void {
   // iOS may suspend the context between deck-tap and card media load.
   // A periodic silent tick while studying keeps it runnable for front autoplay.
   keepAliveTimer = setInterval(() => {
+    applyMixableAudioSession()
     if (ctx.state === 'closed') return
-    if (ctx.state === 'suspended') void ctx.resume()
+    if (ctx.state === 'suspended') {
+      void ctx.resume().then(() => applyMixableAudioSession())
+    }
     tickSilence(ctx)
   }, 2000)
 }
@@ -93,6 +108,7 @@ export function stopAudioKeepAlive(): void {
 }
 
 function getContext(): AudioContext {
+  applyMixableAudioSession()
   if (!audioCtx) {
     audioCtx = new (AudioCtxCtor())()
   }
@@ -120,6 +136,7 @@ function finishHtmlWaiter(ok: boolean): void {
 
 /** Call synchronously from a tap handler before any await. */
 export function unlockAudio(): Promise<boolean> {
+  applyMixableAudioSession()
   let ctx: AudioContext
   try {
     ctx = getContext()
@@ -134,13 +151,19 @@ export function unlockAudio(): Promise<boolean> {
 
   if (unlocked && ctx.state === 'running') {
     startKeepAlive(ctx)
-    return resume.then(() => true).catch(() => true)
+    return resume
+      .then(() => {
+        applyMixableAudioSession()
+        return true
+      })
+      .catch(() => true)
   }
   if (unlockPromise) return unlockPromise
 
   unlockPromise = resume
     .then(() => {
       unlocked = true
+      applyMixableAudioSession()
       startKeepAlive(ctx)
       return true
     })
@@ -200,6 +223,7 @@ async function ensureRunning(
       return null
     }
   }
+  applyMixableAudioSession()
   return ctx.state === 'closed' ? null : ctx
 }
 
@@ -272,6 +296,7 @@ async function playViaHtmlAudio(
     audio.load()
     audio.muted = false
     audio.volume = htmlVolume()
+    applyMixableAudioSession()
     try {
       await audio.play()
     } catch {

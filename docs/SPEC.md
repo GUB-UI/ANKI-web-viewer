@@ -76,7 +76,7 @@ GitHub Pages では HashRouter（`#/`）。
 
 再生経路は Web Audio API（IndexedDB Blob を `decodeAudioData`）。HTMLAudio はデコード失敗時のフォールバック。
 
-1. **アンロック:** デッキタップ・学習開始・答えを見る・評価のタップ内で `AudioContext.resume()` する。学習中はコンテキストが suspend されないよう keep-alive する。デッキ一覧に戻ったら keep-alive を止める
+1. **アンロック:** デッキタップ・学習開始・答えを見る・評価のタップ内で `AudioContext.resume()` する。iOS では `navigator.audioSession.type = 'ambient'` にして Apple Music など他の再生を止めない。学習中はコンテキストが suspend されないよう keep-alive する。デッキ一覧に戻ったら keep-alive を止める
 2. **タイミング:** 音声は **表面が表示されたとき** に流す。めくり操作を再生トリガーにしない
 3. **どのファイルか:**
    - 表面の `[sound:…]` を再生する

@@ -89,6 +89,7 @@ describe('audio unlock/playback (Web Audio)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.resetModules()
+    Reflect.deleteProperty(navigator, 'audioSession')
   })
 
   it('unlocks via AudioContext.resume inside gesture', async () => {
@@ -125,5 +126,16 @@ describe('audio unlock/playback (Web Audio)', () => {
     expect(() => mod.stopAudioPlayback()).not.toThrow()
     await mod.unlockAudio()
     expect(() => mod.stopAudioPlayback()).not.toThrow()
+  })
+
+  it('sets the iOS audio session to ambient so other music can keep playing', async () => {
+    const session = { type: 'playback' }
+    Object.defineProperty(navigator, 'audioSession', {
+      configurable: true,
+      value: session,
+    })
+    const mod = await loadAudioModule()
+    await mod.unlockAudio()
+    expect(session.type).toBe('ambient')
   })
 })
