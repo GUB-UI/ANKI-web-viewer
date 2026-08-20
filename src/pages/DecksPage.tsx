@@ -3,9 +3,18 @@ import { Link, useNavigate } from 'react-router-dom'
 import { liveQuery } from 'dexie'
 import { ActionSheet } from '../components/ActionSheet'
 import { DeckTree } from '../components/DeckTree'
+import { downloadBlob } from '../backup/exportBackup'
 import { ensureSettings, requestPersistentStorage } from '../db/database'
 import type { Deck } from '../db/schema'
-import { buildDeckForest, snapshotHomeState, totalDue } from '../study'
+import {
+  buildDeckForest,
+  loadTodayFronts,
+  snapshotHomeState,
+  todayFrontsFilename,
+  todayFrontsMarkdown,
+  totalDue,
+  type TodayFront,
+} from '../study'
 import { stopAudioKeepAlive, unlockAudio } from '../utils/audio'
 
 export function DecksPage() {
@@ -15,6 +24,7 @@ export function DecksPage() {
     new Map(),
   )
   const [today, setToday] = useState({ new: 0, review: 0 })
+  const [todayFronts, setTodayFronts] = useState<TodayFront[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [menuDeck, setMenuDeck] = useState<Deck | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -42,6 +52,14 @@ export function DecksPage() {
         console.error(error)
         setLoadError('デッキを読み込めませんでした。アプリを再起動してください。')
       },
+    })
+    return () => sub.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const sub = liveQuery(async () => loadTodayFronts()).subscribe({
+      next: setTodayFronts,
+      error: (error) => console.error(error),
     })
     return () => sub.unsubscribe()
   }, [])
@@ -119,6 +137,35 @@ export function DecksPage() {
               onLongPress={setMenuDeck}
             />
           </div>
+          {todayFronts.length > 0 && (
+            <section className="panel glass today-words">
+              <div className="panel-head">
+                <span className="eyebrow">Today</span>
+                <span className="index numeric">{todayFronts.length}</span>
+              </div>
+              <div className="today-words-title">
+                <h2>今日の単語</h2>
+                <button
+                  type="button"
+                  className="btn today-words-dl"
+                  onClick={() => {
+                    const markdown = todayFrontsMarkdown(todayFronts)
+                    downloadBlob(
+                      new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+                      todayFrontsFilename(),
+                    )
+                  }}
+                >
+                  .md をダウンロード
+                </button>
+              </div>
+              <ul className="today-word-list">
+                {todayFronts.map((item) => (
+                  <li key={item.cardId}>{item.text}</li>
+                ))}
+              </ul>
+            </section>
+          )}
           <div className="today-bar">
             <div className="today-item glass">
               <div className="label">今日 · 新規</div>

@@ -64,6 +64,40 @@ export function stripLeadingRule(html: string): string {
   return html.replace(/^(?:\s|<br\s*\/?>)*(?:<hr[^>]*>(?:\s|<br\s*\/?>)*)+/i, '')
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+}
+
+/** Front HTML → one-line plain text for lists and Markdown. */
+export function htmlToPlainText(html: string): string {
+  const withBreaks = html
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|li|h[1-6]|tr)>/gi, '\n')
+  const withoutTags = withBreaks.replace(/<[^>]+>/g, '')
+  const decoded = withoutTags.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (_, ent: string) => {
+    const named = HTML_ENTITIES[ent.toLowerCase()]
+    if (named) return named
+    if (ent[0] === '#') {
+      const hex = ent[1] === 'x' || ent[1] === 'X'
+      const code = Number.parseInt(hex ? ent.slice(2) : ent.slice(1), hex ? 16 : 10)
+      if (Number.isFinite(code) && code > 0 && code <= 0x10ffff) {
+        try {
+          return String.fromCodePoint(code)
+        } catch {
+          return ''
+        }
+      }
+    }
+    return ''
+  })
+  return decoded.replace(/\s+/g, ' ').trim()
+}
+
 export function renderCardContent(
   card: Card,
   note: Note,

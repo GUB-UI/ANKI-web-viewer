@@ -44,6 +44,7 @@ GitHub Pages では HashRouter（`#/`）。
 - 階層表示。親デッキの学習は配下を含む
 - 行の件数: 新規と、復習＋学習中。バッジは合計 due
 - 画面下部「今日」: ルートデッキの新規合計 / 復習＋学習中合計
+- 今日学習したカードの **表面だけ** を一覧表示。`.md をダウンロード` で即保存（ファイル名 `今日の単語-YYYY-MM-DD.md`、カードは当日初出順・重複なし）
 - 件数がある行をタップ → 音声アンロックのうえ学習開始
 - 件数 0 のタップ、長押し、メニュー → アクションシート（学習開始 / カスタム学習）
 - 学習開始時に `AudioContext` をユーザー操作内でアンロックする
@@ -126,8 +127,9 @@ GitHub Pages では HashRouter（`#/`）。
 - Dexie の due / new クエリ形
 - 補強復習キューの `sessionStorage`
 - 評価後の学習カード再挿入（復習を数枚挟む）
+- 今日学習したカードの表面一覧と Markdown 書き出し
 
-ページが呼ぶもの: `snapshotHomeState`、`loadStudyCards`、`applyRating`、`ratingPreviews`、`remainingCounts`、`beginFailedReview`、日次新規上限の読み書き。
+ページが呼ぶもの: `snapshotHomeState`、`loadTodayFronts`、`todayFrontsMarkdown`、`loadStudyCards`、`applyRating`、`ratingPreviews`、`remainingCounts`、`beginFailedReview`、日次新規上限の読み書き。
 
 意図的に分けたままにするもの:
 

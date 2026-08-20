@@ -731,6 +731,56 @@ html[data-theme='dark'] .btn-primary {
   font-weight: 400;
 }
 
+/* ---- today words ------------------------------------------------------- */
+
+.today-words {
+  margin-top: 16px;
+}
+
+.today-words-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 8px;
+}
+
+.today-words-title h2 {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.today-words-dl {
+  flex: none;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.today-word-list {
+  max-height: 42vh;
+  margin: 0 0 12px;
+  padding: 0 4px;
+  overflow: auto;
+  list-style: none;
+}
+
+.today-word-list li {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+  line-height: 1.45;
+}
+
+.today-word-list li:last-child {
+  border-bottom: 0;
+}
+
 /* ---- today ------------------------------------------------------------- */
 
 .today-bar {
