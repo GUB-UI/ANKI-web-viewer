@@ -16,6 +16,7 @@ import {
   type TodayFront,
 } from '../study'
 import { stopAudioKeepAlive, unlockAudio } from '../utils/audio'
+import { formatStudyDuration } from '../utils/dates'
 
 export function DecksPage() {
   const navigate = useNavigate()
@@ -23,7 +24,7 @@ export function DecksPage() {
   const [counts, setCounts] = useState<Map<string, import('../db/schema').DeckCounts>>(
     new Map(),
   )
-  const [today, setToday] = useState({ new: 0, review: 0 })
+  const [today, setToday] = useState({ new: 0, review: 0, durationMs: 0 })
   const [todayFronts, setTodayFronts] = useState<TodayFront[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [menuDeck, setMenuDeck] = useState<Deck | null>(null)
@@ -174,6 +175,10 @@ export function DecksPage() {
             <div className="today-item glass">
               <div className="label">今日 · 復習</div>
               <div className="value">{today.review}</div>
+            </div>
+            <div className="today-item today-time glass">
+              <div className="label">今日 · 勉強時間</div>
+              <div className="value">{formatStudyDuration(today.durationMs)}</div>
             </div>
           </div>
           <footer className="shell-footer">

@@ -12,6 +12,7 @@ import {
   subtreeIds,
 } from './dailyNew'
 import { computeDeckCounts } from './deckTree'
+import { startOfTodayMs } from '../utils/dates'
 
 /** Keep near-term learning steps available when a study session is reopened. */
 export const LEARNING_RESTORE_WINDOW_MS = 25 * 60 * 1000
@@ -39,14 +40,16 @@ export async function buildStudyQueue(rootDeckId: string): Promise<{
 export async function snapshotHomeState(now = Date.now()): Promise<{
   decks: Deck[]
   counts: Map<string, DeckCounts>
-  today: { new: number; review: number }
+  today: { new: number; review: number; durationMs: number }
 }> {
   const decks = await db.decks.toArray()
   const deckIds = decks.map((deck) => deck.id)
   const dailyNew = await loadDailyNewContext(now, decks)
-  const [dueByDeck, availableNewByDeck] = await Promise.all([
+  const start = startOfTodayMs(new Date(now))
+  const [dueByDeck, availableNewByDeck, todayLogs] = await Promise.all([
     fetchDueCountsByDeck(deckIds, now, now + LEARNING_RESTORE_WINDOW_MS),
     countActiveNewByDeck(deckIds),
+    db.reviewLogs.where('reviewedAt').aboveOrEqual(start).toArray(),
   ])
   const counts = computeDeckCounts(decks, dueByDeck, availableNewByDeck, dailyNew)
   const today = decks
@@ -60,7 +63,11 @@ export async function snapshotHomeState(now = Date.now()): Promise<{
         }
         return total
       },
-      { new: 0, review: 0 },
+      { new: 0, review: 0, durationMs: 0 },
     )
+  today.durationMs = todayLogs.reduce(
+    (sum, log) => (log.reviewedAt > now ? sum : sum + (log.durationMs ?? 0)),
+    0,
+  )
   return { decks, counts, today }
 }

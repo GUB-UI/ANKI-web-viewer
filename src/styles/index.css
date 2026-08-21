@@ -812,6 +812,15 @@ html[data-theme='dark'] .btn-primary {
   line-height: 1;
 }
 
+.today-item.today-time {
+  grid-column: 1 / -1;
+}
+
+.today-item.today-time .value {
+  font-size: 1.45rem;
+  letter-spacing: -0.02em;
+}
+
 /* ---- import ------------------------------------------------------------ */
 
 .drop-zone {

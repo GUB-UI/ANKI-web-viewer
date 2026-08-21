@@ -47,6 +47,7 @@ test.describe('Kioku MVP smoke', () => {
     await expect(page.getByText('英語')).toBeVisible()
     await expect(page.getByRole('heading', { name: '今日の単語' })).toBeVisible()
     await expect(page.getByRole('button', { name: '.md をダウンロード' })).toBeVisible()
+    await expect(page.getByText('今日 · 勉強時間')).toBeVisible()
 
     await page.getByRole('button', { name: 'メニュー' }).first().click()
     await page.getByRole('button', { name: 'カスタム学習' }).click()

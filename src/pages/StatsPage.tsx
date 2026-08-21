@@ -16,21 +16,13 @@ import {
   type StatsRange,
   type StatsSnapshot,
 } from '../stats'
+import { formatStudyDuration } from '../utils/dates'
 
 function stackLabel(range: StatsRange, index: number, count: number): string {
   const fromEnd = count - 1 - index
   if (range === 'month') return fromEnd === 0 ? '今日' : `${fromEnd}日前`
   if (range === 'year') return fromEnd === 0 ? '今週' : `${fromEnd}週前`
   return fromEnd === 0 ? '直近' : `${fromEnd}ヶ月前`
-}
-
-function formatStudyTime(ms: number): string {
-  const sec = Math.round(ms / 1000)
-  if (sec < 60) return `${sec}秒`
-  const min = Math.floor(sec / 60)
-  const rem = sec % 60
-  if (min < 60) return rem ? `${min}分 ${rem}秒` : `${min}分`
-  return `${Math.floor(min / 60)}時間 ${min % 60}分`
 }
 
 export function StatsPage() {
@@ -127,7 +119,7 @@ export function StatsPage() {
               {snapshot.today.extra ? ` · 補強 ${snapshot.today.extra}` : ''}
             </p>
             <p className="muted stats-note">
-              学習時間 {formatStudyTime(snapshot.today.durationMs)}
+              学習時間 {formatStudyDuration(snapshot.today.durationMs)}
               {snapshot.today.overdue ? ` · 遅れ ${snapshot.today.overdue}` : ''}
             </p>
           </section>
