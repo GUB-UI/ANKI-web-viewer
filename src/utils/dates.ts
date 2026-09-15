@@ -13,6 +13,18 @@ export function daysAgoMs(days: number, from = new Date()): number {
   return from.getTime() - days * 24 * 60 * 60 * 1000
 }
 
+/** Human-readable study time for home / stats (0秒, 12分 3秒, 1時間 4分). */
+export function formatStudyDuration(ms: number): string {
+  const sec = Math.round(Math.max(0, ms) / 1000)
+  if (sec < 60) return `${sec}秒`
+  const min = Math.floor(sec / 60)
+  const rem = sec % 60
+  if (min < 60) return rem ? `${min}分 ${rem}秒` : `${min}分`
+  const hours = Math.floor(min / 60)
+  const rest = min % 60
+  return rest ? `${hours}時間 ${rest}分` : `${hours}時間`
+}
+
 /** Wall-clock delay for learning steps (sub-day). */
 export function formatShortDelay(ms: number): string {
   const minutes = Math.round(Math.max(0, ms) / 60_000)

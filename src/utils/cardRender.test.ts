@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Card, Note } from '../db/schema'
 import {
+  htmlToPlainText,
   renderCardContent,
   stripLeadingRule,
   stripRepeatedFront,
@@ -79,6 +80,12 @@ describe('stripLeadingRule', () => {
     expect(stripLeadingRule('<div>答え</div><hr><div>補足</div>')).toBe(
       '<div>答え</div><hr><div>補足</div>',
     )
+  })
+})
+
+describe('htmlToPlainText', () => {
+  it('strips markup and collapses whitespace', () => {
+    expect(htmlToPlainText('<div>ubi&nbsp;<b>quitous</b></div>')).toBe('ubi quitous')
   })
 })
 

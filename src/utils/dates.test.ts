@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPreviewLabel, formatScheduledDays } from './dates'
+import { formatPreviewLabel, formatScheduledDays, formatStudyDuration } from './dates'
 
 describe('formatScheduledDays', () => {
   it('keeps day counts instead of rounding 31d to 1 month', () => {
@@ -33,5 +33,16 @@ describe('formatPreviewLabel', () => {
         learning: true,
       }),
     ).toBe('10m')
+  })
+})
+
+describe('formatStudyDuration', () => {
+  it('formats seconds, minutes, and hours', () => {
+    expect(formatStudyDuration(0)).toBe('0秒')
+    expect(formatStudyDuration(12_000)).toBe('12秒')
+    expect(formatStudyDuration(60_000)).toBe('1分')
+    expect(formatStudyDuration(75_000)).toBe('1分 15秒')
+    expect(formatStudyDuration(3_600_000)).toBe('1時間')
+    expect(formatStudyDuration(3_720_000)).toBe('1時間 2分')
   })
 })
