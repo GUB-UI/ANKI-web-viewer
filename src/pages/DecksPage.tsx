@@ -8,14 +8,13 @@ import { ensureSettings, requestPersistentStorage } from '../db/database'
 import type { Deck } from '../db/schema'
 import {
   buildDeckForest,
-  loadTodayFronts,
   snapshotHomeState,
   todayFrontsFilename,
   todayFrontsMarkdown,
   totalDue,
   type TodayFront,
 } from '../study'
-import { stopAudioKeepAlive, unlockAudio } from '../utils/audio'
+import { releaseAudioSession, unlockAudio } from '../utils/audio'
 import { formatStudyDuration } from '../utils/dates'
 
 export function DecksPage() {
@@ -33,16 +32,17 @@ export function DecksPage() {
   useEffect(() => {
     void ensureSettings()
     void requestPersistentStorage()
-    stopAudioKeepAlive()
+    releaseAudioSession()
   }, [])
 
   useEffect(() => {
     const sub = liveQuery(async () => snapshotHomeState()).subscribe({
-      next: ({ decks: deckList, counts: c, today: t }) => {
+      next: ({ decks: deckList, counts: c, today: t, todayFronts: fronts }) => {
         setLoadError('')
         setDecks(deckList)
         setCounts(c)
         setToday(t)
+        setTodayFronts(fronts)
         setExpanded((prev) => {
           if (prev.size > 0) return prev
           // expand top-level by default
@@ -53,14 +53,6 @@ export function DecksPage() {
         console.error(error)
         setLoadError('デッキを読み込めませんでした。アプリを再起動してください。')
       },
-    })
-    return () => sub.unsubscribe()
-  }, [])
-
-  useEffect(() => {
-    const sub = liveQuery(async () => loadTodayFronts()).subscribe({
-      next: setTodayFronts,
-      error: (error) => console.error(error),
     })
     return () => sub.unsubscribe()
   }, [])

@@ -23,6 +23,8 @@ import {
 } from './ankiSqlite'
 import { parseAnkiCardMemory } from './cardData'
 import { openModernApkg } from './modernApkg'
+import { invalidateDecodedAudio } from '../utils/audio'
+import { invalidateMediaCaches, withFilenameLower } from '../db/mediaCache'
 
 export interface ImportProgress {
   phase: 'unzip' | 'cards' | 'media' | 'done' | 'error'
@@ -438,6 +440,7 @@ export async function importApkg(
     const mediaRows: {
       id: string
       filename: string
+      filenameLower: string
       mimeType: string
       blob: Blob
     }[] = []
@@ -446,12 +449,14 @@ export async function importApkg(
       const { filename, bytes } = source.mediaEntries[i]!
       const buf = await bytes()
       const mimeType = guessMimeType(filename)
-      mediaRows.push({
-        id: createId('media'),
-        filename,
-        mimeType,
-        blob: new Blob([buf.slice()], { type: mimeType }),
-      })
+      mediaRows.push(
+        withFilenameLower({
+          id: createId('media'),
+          filename,
+          mimeType,
+          blob: new Blob([buf.slice()], { type: mimeType }),
+        }),
+      )
       if (i % 50 === 0 || i === source.mediaEntries.length - 1) {
         report({
           phase: 'media',
@@ -535,6 +540,9 @@ export async function importApkg(
         }
       },
     )
+
+    invalidateMediaCaches()
+    invalidateDecodedAudio()
 
     report({
       phase: 'done',

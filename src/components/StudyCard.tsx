@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import type { RatingValue } from '../db/schema'
 import { rewriteMediaUrls, type RenderedCard } from '../utils/cardRender'
 import { useMediaEntries } from '../hooks/useMediaUrls'
@@ -13,6 +13,10 @@ import {
   type SoundResolve,
 } from '../utils/audio'
 import { RatingButtons } from './RatingButtons'
+import {
+  msUntilNextSecondChange,
+  remainingWholeSeconds,
+} from '../utils/countdown'
 
 interface Props {
   rendered: RenderedCard
@@ -33,20 +37,62 @@ const RATING_FREEZE_MS = 500
 function resolveSounds(
   filenames: string[],
   blobs: Map<string, Blob>,
+  ids: Map<string, string>,
   ready: boolean,
 ): SoundResolve {
   if (filenames.length === 0) return { status: 'empty' }
   if (!ready) return { status: 'loading' }
   const resolved: Blob[] = []
+  const keys: string[] = []
   const missing: string[] = []
   for (const name of filenames) {
     const blob = blobs.get(name) ?? blobs.get(name.toLowerCase())
-    if (blob) resolved.push(blob)
-    else missing.push(name)
+    if (blob) {
+      resolved.push(blob)
+      const id = ids.get(name) ?? ids.get(name.toLowerCase())
+      if (id) keys.push(id)
+    } else missing.push(name)
   }
   if (missing.length > 0) return { status: 'missing', names: missing }
-  return { status: 'ready', blobs: resolved }
+  return { status: 'ready', blobs: resolved, keys }
 }
+
+function playResolved(sounds: SoundResolve, signal: { cancelled: boolean }) {
+  if (sounds.status !== 'ready') return Promise.resolve(false)
+  const items = sounds.blobs.map((blob, index) => ({
+    blob,
+    cacheKey: sounds.keys?.[index],
+  }))
+  return playAudioBlobs(items, signal)
+}
+
+const CardBody = memo(function CardBody({
+  front,
+  back,
+  showAnswer,
+}: {
+  front: string
+  back: string
+  showAnswer: boolean
+}) {
+  return (
+    <>
+      <div
+        className="card-content"
+        dangerouslySetInnerHTML={{ __html: front }}
+      />
+      {showAnswer && (
+        <>
+          <div className="answer-divider" />
+          <div
+            className="card-content"
+            dangerouslySetInnerHTML={{ __html: back }}
+          />
+        </>
+      )}
+    </>
+  )
+})
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
@@ -73,7 +119,7 @@ export function StudyCardView({
     return [...names]
   }, [rendered])
 
-  const { urls: urlMap, blobs: blobMap, ready: mediaReady } =
+  const { urls: urlMap, blobs: blobMap, ids: idMap, ready: mediaReady } =
     useMediaEntries(allMedia)
 
   const front = useMemo(
@@ -86,12 +132,12 @@ export function StudyCardView({
   )
 
   const frontSounds = useMemo(
-    () => resolveSounds(rendered.frontSounds, blobMap, mediaReady),
-    [rendered.frontSounds, blobMap, mediaReady],
+    () => resolveSounds(rendered.frontSounds, blobMap, idMap, mediaReady),
+    [rendered.frontSounds, blobMap, idMap, mediaReady],
   )
   const backSounds = useMemo(
-    () => resolveSounds(rendered.backSounds, blobMap, mediaReady),
-    [rendered.backSounds, blobMap, mediaReady],
+    () => resolveSounds(rendered.backSounds, blobMap, idMap, mediaReady),
+    [rendered.backSounds, blobMap, idMap, mediaReady],
   )
 
   const questionSounds = useMemo(
@@ -104,8 +150,8 @@ export function StudyCardView({
     [rendered.frontSounds, rendered.backSounds],
   )
   const answerExtraSounds = useMemo(
-    () => resolveSounds(answerExtraNames, blobMap, mediaReady),
-    [answerExtraNames, blobMap, mediaReady],
+    () => resolveSounds(answerExtraNames, blobMap, idMap, mediaReady),
+    [answerExtraNames, blobMap, idMap, mediaReady],
   )
 
   const questionPlayKey =
@@ -126,6 +172,7 @@ export function StudyCardView({
   const startX = useRef<number | null>(null)
   const shownAtRef = useRef(Date.now())
   const offsetRef = useRef(0)
+  const moveRaf = useRef<number | null>(null)
   const playedQuestion = useRef(false)
   const playedBack = useRef(false)
   const busyRef = useRef(false)
@@ -153,6 +200,10 @@ export function StudyCardView({
       freezeTimerRef.current = null
     }
     offsetRef.current = 0
+    if (moveRaf.current != null) {
+      cancelAnimationFrame(moveRaf.current)
+      moveRaf.current = null
+    }
     shownAtRef.current = Date.now()
     stopAudioPlayback()
   }, [
@@ -188,9 +239,8 @@ export function StudyCardView({
     }
 
     const signal = { cancelled: false }
-    const blobs = questionSounds.blobs
     void (async () => {
-      const ok = await playAudioBlobs(blobs, signal)
+      const ok = await playResolved(questionSounds, signal)
       if (signal.cancelled) return
       if (ok) playedQuestion.current = true
     })()
@@ -212,9 +262,8 @@ export function StudyCardView({
       return
     }
     const signal = { cancelled: false }
-    const blobs = answerExtraSounds.blobs
     void (async () => {
-      const ok = await playAudioBlobs(blobs, signal)
+      const ok = await playResolved(answerExtraSounds, signal)
       if (signal.cancelled) return
       if (ok) playedBack.current = true
     })()
@@ -230,11 +279,8 @@ export function StudyCardView({
     }
     const seconds = Math.max(1, autoFlipSeconds)
     const deadline = Date.now() + seconds * 1000
-    setCountdown(seconds)
-    const ticker = window.setInterval(() => {
-      setCountdown(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)))
-    }, 200)
-    const timer = window.setTimeout(() => {
+    let tickTimer: number | null = null
+    const flipTimer = window.setTimeout(() => {
       setCountdown(0)
       stopAudioPlayback()
       playedQuestion.current = true
@@ -242,9 +288,34 @@ export function StudyCardView({
       startRatingFreeze()
       onReveal()
     }, seconds * 1000)
+
+    const scheduleTick = () => {
+      const remaining = remainingWholeSeconds(deadline)
+      setCountdown(remaining)
+      const delay = msUntilNextSecondChange(deadline)
+      if (delay <= 0) return
+      tickTimer = window.setTimeout(() => {
+        if (typeof document !== 'undefined' && document.hidden) return
+        scheduleTick()
+      }, delay)
+    }
+
+    const onVisibility = () => {
+      if (typeof document === 'undefined') return
+      if (document.hidden) {
+        if (tickTimer != null) window.clearTimeout(tickTimer)
+        tickTimer = null
+        return
+      }
+      scheduleTick()
+    }
+
+    scheduleTick()
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
-      window.clearInterval(ticker)
-      window.clearTimeout(timer)
+      if (tickTimer != null) window.clearTimeout(tickTimer)
+      window.clearTimeout(flipTimer)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [autoFlipEnabled, autoFlipSeconds, showAnswer, flying, onReveal, rendered])
 
@@ -257,12 +328,19 @@ export function StudyCardView({
 
   function onPointerMove(e: React.PointerEvent) {
     if (startX.current == null || !swiping) return
-    const next = e.clientX - startX.current
-    offsetRef.current = next
-    setOffsetX(next)
+    offsetRef.current = e.clientX - startX.current
+    if (moveRaf.current != null) return
+    moveRaf.current = requestAnimationFrame(() => {
+      moveRaf.current = null
+      setOffsetX(offsetRef.current)
+    })
   }
 
   function finishSwipe(commit: boolean) {
+    if (moveRaf.current != null) {
+      cancelAnimationFrame(moveRaf.current)
+      moveRaf.current = null
+    }
     const x = offsetRef.current
     startX.current = null
     setSwiping(false)
@@ -364,19 +442,7 @@ export function StudyCardView({
             />
           </>
         )}
-        <div
-          className="card-content"
-          dangerouslySetInnerHTML={{ __html: front }}
-        />
-        {showAnswer && (
-          <>
-            <div className="answer-divider" />
-            <div
-              className="card-content"
-              dangerouslySetInnerHTML={{ __html: back }}
-            />
-          </>
-        )}
+        <CardBody front={front} back={back} showAnswer={showAnswer} />
       </div>
 
       {!showAnswer ? (
