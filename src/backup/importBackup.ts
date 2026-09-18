@@ -1,5 +1,7 @@
 import JSZip from 'jszip'
 import { db } from '../db/database'
+import { invalidateMediaCaches, withFilenameLower } from '../db/mediaCache'
+import { invalidateDecodedAudio } from '../utils/audio'
 import type {
   AppSettings,
   Card,
@@ -251,12 +253,14 @@ async function parseAndValidate(zip: JSZip): Promise<BackupPayload> {
     if (!entry) fail('MISSING_MEDIA', `メディア ${item.filename} がありません。`)
     const bytes = await entry.async('arraybuffer')
     estimatedBytes += bytes.byteLength
-    media.push({
-      id: item.id,
-      filename: item.filename,
-      mimeType: item.mimeType,
-      blob: new Blob([bytes], { type: item.mimeType }),
-    })
+    media.push(
+      withFilenameLower({
+        id: item.id,
+        filename: item.filename,
+        mimeType: item.mimeType,
+        blob: new Blob([bytes], { type: item.mimeType }),
+      }),
+    )
   }
 
   return {
@@ -334,6 +338,8 @@ export async function restoreBackup(file: File | Blob): Promise<void> {
     await assertStorageAvailable(payload.estimatedBytes)
     try {
       await commitPayload(payload)
+      invalidateMediaCaches()
+      invalidateDecodedAudio()
     } catch (error) {
       if (
         error instanceof DOMException &&
