@@ -73,6 +73,34 @@ test.describe('Kioku MVP smoke', () => {
     await expect(page.getByRole('button', { name: 'バックアップを書き出す' })).toBeVisible()
   })
 
+  test('deletes a deck after confirmation and keeps it when cancelled', async ({
+    page,
+  }) => {
+    await page.goto('./')
+    await page.getByRole('link', { name: 'インポート' }).click()
+    await page.locator('input[type="file"]').setInputFiles(apkg)
+    await expect(page.getByText('Import完了')).toBeVisible({ timeout: 30000 })
+    await page.getByRole('button', { name: 'デッキを見る' }).click()
+    await expect(page.getByText('英語', { exact: true })).toBeVisible()
+
+    let cancelled = ''
+    page.once('dialog', (dialog) => {
+      cancelled = dialog.message()
+      return dialog.dismiss()
+    })
+    await page.getByRole('button', { name: 'メニュー' }).first().click()
+    await page.getByRole('button', { name: 'デッキを削除' }).click()
+    expect(cancelled).toContain('英語')
+    expect(cancelled).toContain('元に戻せません')
+    await expect(page.getByRole('button', { name: 'デッキを削除' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /英語/ }).first()).toBeVisible()
+
+    page.once('dialog', (dialog) => dialog.accept())
+    await page.getByRole('button', { name: 'デッキを削除' }).click()
+    await expect(page.getByText('デッキがありません')).toBeVisible()
+    await expect(page.getByRole('button', { name: /英語/ })).toHaveCount(0)
+  })
+
   test('imports the real collection.anki21b from a modern package', async ({ page }) => {
     await page.goto('./')
     await page.getByRole('link', { name: 'インポート' }).click()

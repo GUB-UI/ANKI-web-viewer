@@ -25,4 +25,5 @@ export {
   setDailyNewOverride,
 } from './customStudy'
 export { getEffectiveNewLimit } from './dailyNew'
+export { deleteDeck, type DeckDeletion } from './deleteDeck'
 export { buildDeckForest, totalDue, type DeckNode } from './deckTree'

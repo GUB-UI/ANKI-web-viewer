@@ -1,6 +1,7 @@
 interface Action {
   label: string
-  onClick: () => void
+  /** Return false to keep the sheet open (for example after cancelling a confirm). */
+  onClick: () => void | false
   danger?: boolean
 }
 
@@ -27,7 +28,7 @@ export function ActionSheet({ title, actions, onClose }: Props) {
             type="button"
             style={a.danger ? { color: 'var(--danger)' } : undefined}
             onClick={() => {
-              a.onClick()
+              if (a.onClick() === false) return
               onClose()
             }}
           >
