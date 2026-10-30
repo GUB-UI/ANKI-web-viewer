@@ -7,11 +7,12 @@ interface Action {
 
 interface Props {
   title?: string
+  message?: string
   actions: Action[]
   onClose: () => void
 }
 
-export function ActionSheet({ title, actions, onClose }: Props) {
+export function ActionSheet({ title, message, actions, onClose }: Props) {
   return (
     <div className="menu-sheet" onClick={onClose} role="presentation">
       <div
@@ -22,6 +23,7 @@ export function ActionSheet({ title, actions, onClose }: Props) {
       >
         <div className="sheet-grabber" aria-hidden />
         {title && <div className="sheet-title">{title}</div>}
+        {message && <p className="sheet-message">{message}</p>}
         {actions.map((a) => (
           <button
             key={a.label}

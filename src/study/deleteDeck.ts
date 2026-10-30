@@ -13,13 +13,13 @@ export interface DeckDeletion {
 
 /** Delete a deck, its subdecks, their cards, and data nothing else still uses. */
 export async function deleteDeck(deckId: string): Promise<DeckDeletion> {
-  return db.transaction(
+  const removed = await db.transaction(
     'rw',
-    [db.decks, db.notes, db.cards, db.reviewLogs, db.media, db.dailyOverrides],
+    [db.decks, db.notes, db.cards, db.reviewLogs, db.dailyOverrides],
     async () => {
       const decks = await db.decks.toArray()
       const deckIds = collectDescendantIds(deckId, decks)
-      if (deckIds.length === 0) return { decks: 0, cards: 0, notes: 0 }
+      if (deckIds.length === 0) return null
 
       const cards = await db.cards.where('deckId').anyOf(deckIds).toArray()
       const cardIds = cards.map((card) => card.id)
@@ -35,17 +35,27 @@ export async function deleteDeck(deckId: string): Promise<DeckDeletion> {
       )
       await deleteByKeys(cardIds, (chunk) => db.cards.bulkDelete(chunk))
 
-      const removedNotes = await deleteOrphanNotes(cards)
-      await deleteUnreferencedMedia(removedNotes, cards)
+      const notes = await deleteOrphanNotes(cards)
       await db.decks.bulkDelete(deckIds)
 
-      return {
-        decks: deckIds.length,
-        cards: cards.length,
-        notes: removedNotes.length,
-      }
+      return { deckCount: deckIds.length, cards, notes }
     },
   )
+  if (!removed) return { decks: 0, cards: 0, notes: 0 }
+
+  // Media cleanup must not roll back the deck delete. iOS can abort a long
+  // IndexedDB transaction while scanning every remaining card.
+  try {
+    await deleteUnreferencedMedia(removed.notes, removed.cards)
+  } catch (error) {
+    console.error(error)
+  }
+
+  return {
+    decks: removed.deckCount,
+    cards: removed.cards.length,
+    notes: removed.notes.length,
+  }
 }
 
 async function deleteByKeys(
@@ -80,8 +90,8 @@ async function deleteUnreferencedMedia(
   removedCards: Card[],
 ): Promise<void> {
   const candidates = new Set<string>()
-  const collect = (html: string | undefined) => {
-    if (!html) return
+  const collect = (html: unknown) => {
+    if (typeof html !== 'string' || html === '') return
     for (const name of extractMediaFilenames(html)) {
       candidates.add(name.toLowerCase())
     }
@@ -96,8 +106,8 @@ async function deleteUnreferencedMedia(
   if (candidates.size === 0) return
 
   const stillUsed = new Set<string>()
-  const keep = (html: string | undefined) => {
-    if (!html) return
+  const keep = (html: unknown) => {
+    if (typeof html !== 'string' || html === '') return
     for (const name of extractMediaFilenames(html)) {
       const key = name.toLowerCase()
       if (candidates.has(key)) stillUsed.add(key)

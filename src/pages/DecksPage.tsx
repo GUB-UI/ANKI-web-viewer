@@ -29,6 +29,7 @@ export function DecksPage() {
   const [todayFronts, setTodayFronts] = useState<TodayFront[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [menuDeck, setMenuDeck] = useState<Deck | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -79,14 +80,36 @@ export function DecksPage() {
     })
   }
 
+  function showMenu(deck: Deck) {
+    setConfirmingDelete(false)
+    setMenuDeck(deck)
+  }
+
+  function closeMenu() {
+    setMenuDeck(null)
+    setConfirmingDelete(false)
+  }
+
   function openDeck(deck: Deck) {
     const due = totalDue(counts.get(deck.id) ?? { new: 0, review: 0, learning: 0 })
     if (due === 0) {
-      setMenuDeck(deck)
+      showMenu(deck)
       return
     }
     void unlockAudio()
     navigate(`/study/${deck.id}`)
+  }
+
+  function removeDeck(deck: Deck) {
+    setActionError('')
+    setDeleting(true)
+    closeMenu()
+    void deleteDeck(deck.id)
+      .catch((error: unknown) => {
+        console.error(error)
+        setActionError('デッキを削除できませんでした。')
+      })
+      .finally(() => setDeleting(false))
   }
 
   return (
@@ -145,7 +168,7 @@ export function DecksPage() {
               expanded={expanded}
               onToggle={toggle}
               onOpen={openDeck}
-              onLongPress={setMenuDeck}
+              onLongPress={showMenu}
             />
           </div>
           {todayFronts.length > 0 && (
@@ -201,43 +224,47 @@ export function DecksPage() {
       {menuDeck && (
         <ActionSheet
           title={menuDeck.path}
-          actions={[
-            {
-              label: '学習開始',
-              onClick: () => {
-                void unlockAudio()
-                navigate(`/study/${menuDeck.id}`)
-              },
-            },
-            {
-              label: 'カスタム学習',
-              onClick: () => navigate(`/custom/${menuDeck.id}`),
-            },
-            {
-              label: '統計',
-              onClick: () => navigate(`/stats/${menuDeck.id}`),
-            },
-            {
-              label: 'デッキを削除',
-              danger: true,
-              onClick: () => {
-                const deck = menuDeck
-                const ok = window.confirm(
-                  `「${deck.path}」を削除します。配下のデッキ、カード、学習履歴も消え、元に戻せません。よろしいですか？`,
-                )
-                if (!ok) return false
-                setActionError('')
-                setDeleting(true)
-                void deleteDeck(deck.id)
-                  .catch((error: unknown) => {
-                    console.error(error)
-                    setActionError('デッキを削除できませんでした。')
-                  })
-                  .finally(() => setDeleting(false))
-              },
-            },
-          ]}
-          onClose={() => setMenuDeck(null)}
+          message={
+            confirmingDelete
+              ? '配下のデッキ、カード、学習履歴も消えます。元に戻せません。'
+              : undefined
+          }
+          actions={
+            confirmingDelete
+              ? [
+                  {
+                    label: '削除する',
+                    danger: true,
+                    onClick: () => removeDeck(menuDeck),
+                  },
+                ]
+              : [
+                  {
+                    label: '学習開始',
+                    onClick: () => {
+                      void unlockAudio()
+                      navigate(`/study/${menuDeck.id}`)
+                    },
+                  },
+                  {
+                    label: 'カスタム学習',
+                    onClick: () => navigate(`/custom/${menuDeck.id}`),
+                  },
+                  {
+                    label: '統計',
+                    onClick: () => navigate(`/stats/${menuDeck.id}`),
+                  },
+                  {
+                    label: 'デッキを削除',
+                    danger: true,
+                    onClick: () => {
+                      setConfirmingDelete(true)
+                      return false
+                    },
+                  },
+                ]
+          }
+          onClose={closeMenu}
         />
       )}
     </div>
