@@ -8,6 +8,7 @@ import { ensureSettings, requestPersistentStorage } from '../db/database'
 import type { Deck } from '../db/schema'
 import {
   buildDeckForest,
+  deleteDeck,
   loadTodayFronts,
   snapshotHomeState,
   todayFrontsFilename,
@@ -29,6 +30,8 @@ export function DecksPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [menuDeck, setMenuDeck] = useState<Deck | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   useEffect(() => {
     void ensureSettings()
@@ -108,6 +111,13 @@ export function DecksPage() {
           </Link>
         </div>
       </header>
+
+      {actionError && (
+        <p className="muted" role="alert">
+          {actionError}
+        </p>
+      )}
+      {deleting && <p className="muted">削除しています…</p>}
 
       {loadError ? (
         <div className="empty-state glass">
@@ -206,6 +216,25 @@ export function DecksPage() {
             {
               label: '統計',
               onClick: () => navigate(`/stats/${menuDeck.id}`),
+            },
+            {
+              label: 'デッキを削除',
+              danger: true,
+              onClick: () => {
+                const deck = menuDeck
+                const ok = window.confirm(
+                  `「${deck.path}」を削除します。配下のデッキ、カード、学習履歴も消え、元に戻せません。よろしいですか？`,
+                )
+                if (!ok) return false
+                setActionError('')
+                setDeleting(true)
+                void deleteDeck(deck.id)
+                  .catch((error: unknown) => {
+                    console.error(error)
+                    setActionError('デッキを削除できませんでした。')
+                  })
+                  .finally(() => setDeleting(false))
+              },
             },
           ]}
           onClose={() => setMenuDeck(null)}

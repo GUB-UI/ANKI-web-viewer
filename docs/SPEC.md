@@ -46,7 +46,8 @@ GitHub Pages では HashRouter（`#/`）。
 - 画面下部「今日」: ルートデッキの新規合計 / 復習＋学習中合計 / **勉強時間**（当日の評価ログ `durationMs` 合計。1回答上限 60 秒。通常学習と補強復習を含む）
 - 今日学習したカードの **表面だけ** を一覧表示。`.md をダウンロード` で即保存（ファイル名 `今日の単語-YYYY-MM-DD.md`、カードは当日初出順・重複なし）
 - 件数がある行をタップ → 音声アンロックのうえ学習開始
-- 件数 0 のタップ、長押し、メニュー → アクションシート（学習開始 / カスタム学習）
+- 件数 0 のタップ、長押し、メニュー → アクションシート（学習開始 / カスタム学習 / 統計 / デッキを削除）
+- デッキ削除は確認のあと、そのデッキと配下を消す。カード、他に残らないノート、復習ログ、当日の新規上限、参照されなくなったメディアも消す。他デッキがまだ使うノートとメディアは残す
 - 学習開始時に `AudioContext` をユーザー操作内でアンロックする
 
 ## 5. 学習キュー
@@ -129,7 +130,7 @@ GitHub Pages では HashRouter（`#/`）。
 - 評価後の学習カード再挿入（復習を数枚挟む）
 - 今日学習したカードの表面一覧と Markdown 書き出し
 
-ページが呼ぶもの: `snapshotHomeState`、`loadTodayFronts`、`todayFrontsMarkdown`、`loadStudyCards`、`applyRating`、`ratingPreviews`、`remainingCounts`、`beginFailedReview`、日次新規上限の読み書き。
+ページが呼ぶもの: `snapshotHomeState`、`loadTodayFronts`、`todayFrontsMarkdown`、`loadStudyCards`、`applyRating`、`ratingPreviews`、`remainingCounts`、`beginFailedReview`、`deleteDeck`、日次新規上限の読み書き。
 
 意図的に分けたままにするもの:
 
