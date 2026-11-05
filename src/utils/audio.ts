@@ -8,6 +8,9 @@
  *  2. Later: decodeAudioData(arrayBuffer) and BufferSource.start()
  *
  * HTMLAudioElement remains a fallback when decodeAudioData rejects a format.
+ *
+ * Keep-alive is scoped to an active study session. Hidden / completed /
+ * unmounted sessions stop the timer and suspend the context once playback is idle.
  */
 
 export type PlaybackSignal = { cancelled: boolean }
@@ -18,6 +21,10 @@ type WebkitWindow = Window &
   }
 
 type MixableAudioSession = { type: string }
+
+export const KEEP_ALIVE_MS = 2000
+/** PCM bytes kept in the decoded-buffer LRU (16-bit stereo ≈ 2 bytes/frame/channel counted as f32). */
+const DECODE_CACHE_MAX_BYTES = 12 * 1024 * 1024
 
 function applyMixableAudioSession(): void {
   try {
@@ -36,6 +43,10 @@ function AudioCtxCtor(): typeof AudioContext {
   return Ctor
 }
 
+function pageHidden(): boolean {
+  return typeof document !== 'undefined' && document.hidden
+}
+
 let unlocked = false
 let unlockPromise: Promise<boolean> | null = null
 let audioCtx: AudioContext | null = null
@@ -48,6 +59,17 @@ let activeFinish: ((ok: boolean) => void) | null = null
 let htmlPlayer: HTMLAudioElement | null = null
 let htmlWaiter: ((ok: boolean) => void) | null = null
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null
+let keepAliveGeneration = 0
+let sessionWanted = false
+let suspendWhenIdle = false
+let visibilityHooked = false
+
+type DecodeEntry = { buffer: AudioBuffer; bytes: number }
+const decodeCache = new Map<string, DecodeEntry>()
+const decodeInflight = new Map<string, Promise<AudioBuffer>>()
+const blobCacheKeys = new WeakMap<Blob, string>()
+let blobKeySeq = 0
+let decodeCacheBytes = 0
 
 function htmlVolume(): number {
   return Math.min(1, Math.max(0, outputVolume))
@@ -75,6 +97,47 @@ function getMasterGain(ctx: AudioContext): GainNode {
   return masterGain
 }
 
+function pcmBytes(buffer: AudioBuffer): number {
+  return buffer.length * buffer.numberOfChannels * 4
+}
+
+function blobDecodeKey(blob: Blob, explicit?: string): string {
+  if (explicit) return explicit
+  const existing = blobCacheKeys.get(blob)
+  if (existing) return existing
+  const key = `blob:${blob.size}:${blob.type}:${++blobKeySeq}`
+  blobCacheKeys.set(blob, key)
+  return key
+}
+
+function touchDecode(key: string): AudioBuffer | undefined {
+  const entry = decodeCache.get(key)
+  if (!entry) return undefined
+  decodeCache.delete(key)
+  decodeCache.set(key, entry)
+  return entry.buffer
+}
+
+function storeDecode(key: string, buffer: AudioBuffer): void {
+  const bytes = pcmBytes(buffer)
+  if (bytes > DECODE_CACHE_MAX_BYTES) return
+  while (decodeCacheBytes + bytes > DECODE_CACHE_MAX_BYTES && decodeCache.size > 0) {
+    const oldest = decodeCache.keys().next().value
+    if (oldest == null) break
+    const removed = decodeCache.get(oldest)
+    decodeCache.delete(oldest)
+    if (removed) decodeCacheBytes -= removed.bytes
+  }
+  decodeCache.set(key, { buffer, bytes })
+  decodeCacheBytes += bytes
+}
+
+export function invalidateDecodedAudio(): void {
+  decodeCache.clear()
+  decodeInflight.clear()
+  decodeCacheBytes = 0
+}
+
 function tickSilence(ctx: AudioContext): void {
   try {
     const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050)
@@ -87,24 +150,98 @@ function tickSilence(ctx: AudioContext): void {
   }
 }
 
-function startKeepAlive(ctx: AudioContext): void {
-  if (keepAliveTimer != null) return
-  // iOS may suspend the context between deck-tap and card media load.
-  // A periodic silent tick while studying keeps it runnable for front autoplay.
-  keepAliveTimer = setInterval(() => {
-    applyMixableAudioSession()
-    if (ctx.state === 'closed') return
-    if (ctx.state === 'suspended') {
-      void ctx.resume().then(() => applyMixableAudioSession())
-    }
-    tickSilence(ctx)
-  }, 2000)
-}
-
-export function stopAudioKeepAlive(): void {
+function clearKeepAliveTimer(): void {
   if (keepAliveTimer == null) return
   clearInterval(keepAliveTimer)
   keepAliveTimer = null
+}
+
+function startKeepAlive(ctx: AudioContext): void {
+  if (keepAliveTimer != null) return
+  if (!sessionWanted || pageHidden()) return
+  const generation = keepAliveGeneration
+  keepAliveTimer = setInterval(() => {
+    if (generation !== keepAliveGeneration) return
+    if (!sessionWanted || pageHidden()) return
+    applyMixableAudioSession()
+    if (ctx.state === 'closed') return
+    if (ctx.state === 'suspended') {
+      void ctx.resume().then(() => {
+        if (generation !== keepAliveGeneration) return
+        applyMixableAudioSession()
+      })
+    }
+    tickSilence(ctx)
+  }, KEEP_ALIVE_MS)
+}
+
+function hookVisibility(): void {
+  if (visibilityHooked || typeof document === 'undefined') return
+  visibilityHooked = true
+  document.addEventListener('visibilitychange', onVisibilityChange)
+}
+
+function onVisibilityChange(): void {
+  if (pageHidden()) {
+    clearKeepAliveTimer()
+    if (activeSource || htmlWaiter) suspendWhenIdle = true
+    else void suspendContext()
+    return
+  }
+  suspendWhenIdle = false
+  if (!sessionWanted) return
+  const ctx = audioCtx
+  if (!ctx || ctx.state === 'closed') return
+  const generation = keepAliveGeneration
+  void ctx
+    .resume()
+    .then(() => {
+      if (generation !== keepAliveGeneration || pageHidden() || !sessionWanted) return
+      applyMixableAudioSession()
+      startKeepAlive(ctx)
+    })
+    .catch(() => {
+      // next user gesture will unlock again
+    })
+}
+
+async function suspendContext(): Promise<void> {
+  const ctx = audioCtx
+  if (!ctx || ctx.state !== 'running') return
+  try {
+    await ctx.suspend()
+  } catch {
+    // ignore
+  }
+}
+
+function maybeSuspendIdle(): void {
+  if (!suspendWhenIdle) return
+  if (activeSource || htmlWaiter) return
+  suspendWhenIdle = false
+  void suspendContext()
+}
+
+export function isAudioKeepAliveActive(): boolean {
+  return keepAliveTimer != null
+}
+
+export function audioContextState(): AudioContextState | 'none' {
+  return audioCtx?.state ?? 'none'
+}
+
+export function stopAudioKeepAlive(): void {
+  keepAliveGeneration += 1
+  sessionWanted = false
+  clearKeepAliveTimer()
+}
+
+/** Stop ticks, cancel in-flight resume keep-alive, and suspend when idle. */
+export function releaseAudioSession(): void {
+  stopAudioKeepAlive()
+  stopAudioPlayback()
+  suspendWhenIdle = false
+  void suspendContext()
 }
 
 function getContext(): AudioContext {
@@ -137,23 +274,30 @@ function finishHtmlWaiter(ok: boolean): void {
 /** Call synchronously from a tap handler before any await. */
 export function unlockAudio(): Promise<boolean> {
   applyMixableAudioSession()
+  sessionWanted = true
+  hookVisibility()
   let ctx: AudioContext
   try {
     ctx = getContext()
   } catch {
+    sessionWanted = false
     return Promise.resolve(false)
   }
+
+  const generation = keepAliveGeneration
 
   // Always invoke resume() in this call stack — required on iOS even when we
   // think we are already unlocked (SPA navigation can suspend the context).
   const resume = ctx.resume()
   tickSilence(ctx)
 
-  if (unlocked && ctx.state === 'running') {
-    startKeepAlive(ctx)
+  if (unlocked) {
+    if (ctx.state === 'running') startKeepAlive(ctx)
     return resume
       .then(() => {
         applyMixableAudioSession()
+        if (generation !== keepAliveGeneration) return true
+        startKeepAlive(ctx)
         return true
       })
       .catch(() => true)
@@ -164,6 +308,7 @@ export function unlockAudio(): Promise<boolean> {
     .then(() => {
       unlocked = true
       applyMixableAudioSession()
+      if (generation !== keepAliveGeneration) return true
       startKeepAlive(ctx)
       return true
     })
@@ -174,7 +319,6 @@ export function unlockAudio(): Promise<boolean> {
 
   return unlockPromise
 }
-
 
 export function isAudioUnlocked(): boolean {
   return unlocked
@@ -205,6 +349,7 @@ export function stopAudioPlayback(): void {
     htmlPlayer.pause()
     finishHtmlWaiter(false)
   }
+  maybeSuspendIdle()
 }
 
 async function ensureRunning(
@@ -227,24 +372,49 @@ async function ensureRunning(
   return ctx.state === 'closed' ? null : ctx
 }
 
+async function decodeBuffer(
+  ctx: AudioContext,
+  data: ArrayBuffer,
+  key: string,
+): Promise<AudioBuffer> {
+  const cached = touchDecode(key)
+  if (cached) return cached
+  const pending = decodeInflight.get(key)
+  if (pending) return pending
+
+  const copy = data.slice(0)
+  const work = ctx.decodeAudioData(copy).then((buffer) => {
+    storeDecode(key, buffer)
+    decodeInflight.delete(key)
+    return buffer
+  })
+  decodeInflight.set(key, work)
+  try {
+    return await work
+  } catch (error) {
+    decodeInflight.delete(key)
+    throw error
+  }
+}
+
 async function playViaWebAudio(
   ctx: AudioContext,
   data: ArrayBuffer,
   signal?: PlaybackSignal,
+  cacheKey?: string,
 ): Promise<boolean> {
   if (signal?.cancelled) return false
 
-  // Safari detaches the buffer; always copy first.
-  const copy = data.slice(0)
   let audioBuffer: AudioBuffer
   try {
-    audioBuffer = await ctx.decodeAudioData(copy)
+    audioBuffer = await decodeBuffer(ctx, data, cacheKey ?? `anon:${data.byteLength}`)
   } catch {
     return false
   }
   if (signal?.cancelled) return false
 
   stopAudioPlayback()
+  suspendWhenIdle = false
 
   return new Promise<boolean>((resolve) => {
     const source = ctx.createBufferSource()
@@ -263,6 +433,7 @@ async function playViaWebAudio(
         // ignore
       }
       resolve(ok)
+      maybeSuspendIdle()
     }
     activeFinish = finish
     source.onended = () => finish(true)
@@ -315,6 +486,7 @@ async function playViaHtmlAudio(
         audio.removeEventListener('error', onError)
         if (htmlWaiter === finish) htmlWaiter = null
         resolve(ok)
+        maybeSuspendIdle()
       }
       const onEnded = () => finish(true)
       const onError = () => finish(false)
@@ -329,34 +501,39 @@ async function playViaHtmlAudio(
   }
 }
 
+export type PlayableSound = {
+  blob: Blob
+  /** Stable media id; same id must not outlive a content replacement. */
+  cacheKey?: string
+}
+
 /** Play blobs in order (Web Audio first, HTMLAudio fallback). */
 export async function playAudioBlobs(
-  blobs: Blob[],
+  blobs: Blob[] | PlayableSound[],
   signal?: PlaybackSignal,
 ): Promise<boolean> {
-  if (blobs.length === 0) return true
+  const items: PlayableSound[] = blobs.map((item) =>
+    item instanceof Blob ? { blob: item } : item,
+  )
+  if (items.length === 0) return true
   const ctx = await ensureRunning(signal)
   if (!ctx) return false
 
-  for (const blob of blobs) {
+  for (const item of items) {
     if (signal?.cancelled) return false
-    const typed =
-      blob.type && blob.type !== 'application/octet-stream'
-        ? blob
-        : blob
     let data: ArrayBuffer
     try {
-      data = await typed.arrayBuffer()
+      data = await item.blob.arrayBuffer()
     } catch {
       return false
     }
     if (signal?.cancelled) return false
 
-    const viaCtx = await playViaWebAudio(ctx, data, signal)
+    const key = blobDecodeKey(item.blob, item.cacheKey)
+    const viaCtx = await playViaWebAudio(ctx, data, signal, key)
     if (viaCtx) continue
 
-    // decodeAudioData rejected (unsupported codec) — try HTMLAudioElement.
-    const viaHtml = await playViaHtmlAudio(typed, signal)
+    const viaHtml = await playViaHtmlAudio(item.blob, signal)
     if (!viaHtml) return false
   }
   return true
@@ -383,8 +560,8 @@ export async function playAudioUrls(
 export type SoundResolve =
   | { status: 'empty' }
   | { status: 'loading' }
+  | { status: 'ready'; blobs: Blob[]; keys?: string[] }
   | { status: 'missing'; names: string[] }
-  | { status: 'ready'; blobs: Blob[] }
 
 /** Question-face audio: front tags first, otherwise back tags (play on show, not on flip). */
 export function pickQuestionSounds(
@@ -411,4 +588,3 @@ export function extraAnswerSounds(
   if (frontNames.length === 0) return []
   return backNames.filter((name) => !used.has(name.toLowerCase()))
 }
-

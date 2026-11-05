@@ -12,6 +12,7 @@ import {
   subtreeIds,
 } from './dailyNew'
 import { computeDeckCounts } from './deckTree'
+import { frontsFromTodayLogs, type TodayFront } from './todayFronts'
 import { startOfTodayMs } from '../utils/dates'
 
 /** Keep near-term learning steps available when a study session is reopened. */
@@ -41,6 +42,7 @@ export async function snapshotHomeState(now = Date.now()): Promise<{
   decks: Deck[]
   counts: Map<string, DeckCounts>
   today: { new: number; review: number; durationMs: number }
+  todayFronts: TodayFront[]
 }> {
   const decks = await db.decks.toArray()
   const deckIds = decks.map((deck) => deck.id)
@@ -69,5 +71,6 @@ export async function snapshotHomeState(now = Date.now()): Promise<{
     (sum, log) => (log.reviewedAt > now ? sum : sum + (log.durationMs ?? 0)),
     0,
   )
-  return { decks, counts, today }
+  const todayFronts = await frontsFromTodayLogs(todayLogs, now, decks)
+  return { decks, counts, today, todayFronts }
 }

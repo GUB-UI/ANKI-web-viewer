@@ -1,3 +1,4 @@
+import Dexie from 'dexie'
 import { db } from '../db/database'
 import type { Card, Deck, ReviewLog } from '../db/schema'
 import { collectDescendantIds } from '../study/deckTree'
@@ -38,15 +39,23 @@ async function loadScopedCards(deckIds: string[] | null): Promise<Card[]> {
   return db.cards.where('deckId').anyOf(deckIds).toArray()
 }
 
-async function loadScopedLogs(
+export async function loadScopedLogs(
   deckIds: string[] | null,
   since: number,
 ): Promise<ReviewLog[]> {
-  const logs =
-    since > 0
-      ? await db.reviewLogs.where('reviewedAt').aboveOrEqual(since).toArray()
-      : await db.reviewLogs.toArray()
-  if (!deckIds) return logs
-  const allowed = new Set(deckIds)
-  return logs.filter((log) => log.deckId != null && allowed.has(log.deckId))
+  if (!deckIds) {
+    return since > 0
+      ? db.reviewLogs.where('reviewedAt').aboveOrEqual(since).toArray()
+      : db.reviewLogs.toArray()
+  }
+  if (deckIds.length === 0) return []
+  const chunks = await Promise.all(
+    deckIds.map((deckId) =>
+      db.reviewLogs
+        .where('[deckId+reviewedAt]')
+        .between([deckId, since], [deckId, Dexie.maxKey], true, true)
+        .toArray(),
+    ),
+  )
+  return chunks.flat()
 }

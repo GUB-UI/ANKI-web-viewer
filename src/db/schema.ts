@@ -70,6 +70,8 @@ export interface ReviewLog {
 export interface MediaFile {
   id: string
   filename: string
+  /** Lowercased filename for case-insensitive lookup. Filled on write / v4 upgrade. */
+  filenameLower?: string
   mimeType: string
   blob: Blob
 }

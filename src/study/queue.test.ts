@@ -55,5 +55,6 @@ describe('snapshotHomeState', () => {
     await db.reviewLogs.bulkPut(logs)
     const snapshot = await snapshotHomeState(now)
     expect(snapshot.today.durationMs).toBe(20_000)
+    expect(snapshot.todayFronts).toEqual([])
   })
 })

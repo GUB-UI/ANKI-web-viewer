@@ -10,6 +10,7 @@ import {
   remainingCounts,
 } from '../study'
 import { renderCardContent } from '../utils/cardRender'
+import { releaseAudioSession } from '../utils/audio'
 
 export function StudyPage({ source = 'normal' as ReviewSource }) {
   const { deckId = '' } = useParams()
@@ -47,6 +48,12 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
       alive = false
     }
   }, [deckId, source])
+
+  useEffect(() => {
+    return () => {
+      releaseAudioSession()
+    }
+  }, [])
 
   useEffect(() => {
     if (!card) {
@@ -96,6 +103,10 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
   }
 
   const done = !loading && !card
+
+  useEffect(() => {
+    if (done) releaseAudioSession()
+  }, [done])
   const remaining = useMemo(() => remainingCounts(queue), [queue])
   const totalHint = answered + queue.length
   const progress = totalHint ? answered / totalHint : 0
