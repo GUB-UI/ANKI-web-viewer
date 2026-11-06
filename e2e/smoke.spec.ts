@@ -71,6 +71,21 @@ test.describe('Kioku MVP smoke', () => {
     await expect(page.getByRole('heading', { name: '設定' })).toBeVisible()
     await expect(page.getByLabel('カードの音量')).toBeVisible()
     await expect(page.getByRole('button', { name: 'バックアップを書き出す' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'iCloudで共有' })).toBeVisible()
+    await expect(page.getByText('自動では同期しません。')).toBeVisible()
+
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'iCloudで共有' }).click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toMatch(/^kioku-backup-\d{4}-\d{2}-\d{2}\.zip$/)
+    await expect(page.getByText('ファイルを書き出しました。')).toBeVisible()
+
+    await page.locator('input[type="file"]').setInputFiles(apkg)
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByText('現在のデータと置き換えます')).toBeVisible()
+    await page.getByRole('button', { name: 'キャンセル' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByText('復元が完了しました。')).toHaveCount(0)
   })
 
   test('deletes a deck after confirmation and keeps it when cancelled', async ({
