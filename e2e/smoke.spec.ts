@@ -21,6 +21,7 @@ test.describe('Kioku MVP smoke', () => {
 
     await expect(page.getByText('英語')).toBeVisible()
     await expect(page.getByText('Default')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'クラウドに共有' })).toBeEnabled()
 
     // Parent deck menu → study (includes all descendants)
     await page.getByRole('button', { name: 'メニュー' }).first().click()
@@ -71,11 +72,11 @@ test.describe('Kioku MVP smoke', () => {
     await expect(page.getByRole('heading', { name: '設定' })).toBeVisible()
     await expect(page.getByLabel('カードの音量')).toBeVisible()
     await expect(page.getByRole('button', { name: 'バックアップを書き出す' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'iCloudで共有' })).toBeVisible()
-    await expect(page.getByText('自動では同期しません。')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'クラウドに共有' })).toBeEnabled()
+    await expect(page.getByText('ワンタップで共有シートが開きます。')).toBeVisible()
 
     const downloadPromise = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'iCloudで共有' }).click()
+    await page.getByRole('button', { name: 'クラウドに共有' }).click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toMatch(/^kioku-backup-\d{4}-\d{2}-\d{2}\.zip$/)
     await expect(page.getByText('ファイルを書き出しました。')).toBeVisible()

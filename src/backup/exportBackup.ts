@@ -1,7 +1,7 @@
 import JSZip from 'jszip'
 import { db, ensureSettings } from '../db/database'
 
-export async function exportBackup(): Promise<Blob> {
+export async function exportBackup(options?: { record?: boolean }): Promise<Blob> {
   const [decks, notes, cards, reviewLogs, media, settings, dailyOverrides] =
     await Promise.all([
       db.decks.toArray(),
@@ -42,8 +42,13 @@ export async function exportBackup(): Promise<Blob> {
   zip.file('media-index.json', JSON.stringify(mediaIndex))
 
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
-  await db.settings.update('settings', { lastBackupAt: exportedAt })
+  if (options?.record !== false) await markBackupExported(exportedAt)
   return blob
+}
+
+export async function markBackupExported(at = Date.now()): Promise<void> {
+  await ensureSettings()
+  await db.settings.update('settings', { lastBackupAt: at })
 }
 
 export function downloadBlob(blob: Blob, filename: string) {

@@ -10,6 +10,7 @@ import {
   remainingCounts,
 } from '../study'
 import { renderCardContent } from '../utils/cardRender'
+import { invalidatePreparedBackup } from '../backup/preparedBackup'
 import { releaseAudioSession } from '../utils/audio'
 
 export function StudyPage({ source = 'normal' as ReviewSource }) {
@@ -26,6 +27,8 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
   const [answered, setAnswered] = useState(0)
 
   const card = queue[0]
+
+  useEffect(() => () => invalidatePreparedBackup(), [])
 
   useEffect(() => {
     let alive = true
