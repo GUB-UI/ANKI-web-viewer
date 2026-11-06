@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { downloadBlob, exportBackup } from '../backup/exportBackup'
 import { restoreBackup } from '../backup/importBackup'
+import {
+  backupFilename,
+  isShareGestureError,
+  shareBackupFile,
+} from '../backup/shareBackup'
+import { ActionSheet } from '../components/ActionSheet'
 import { NumberStepper } from '../components/NumberStepper'
 import { clearAllData, db, ensureSettings, clampAudioVolume } from '../db/database'
 import type { AppSettings, ThemeMode } from '../db/schema'
@@ -13,8 +19,11 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const { mode, updateTheme } = useTheme()
   const backupInput = useRef<HTMLInputElement>(null)
+  const preparedShare = useRef<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [canReopenShare, setCanReopenShare] = useState(false)
+  const [restoreFile, setRestoreFile] = useState<File | null>(null)
 
   useEffect(() => {
     ensureSettings().then(setSettings)
@@ -32,12 +41,69 @@ export function SettingsPage() {
     setSettings((s) => (s ? { ...s, ...partial } : s))
   }
 
+  async function handOffShare(file: File) {
+    try {
+      const result = await shareBackupFile(file)
+      if (result === 'shared') {
+        setCanReopenShare(false)
+        setMessage('共有シートを開きました。ファイルに保存で iCloud Drive を選べます。')
+        return
+      }
+      if (result === 'cancelled') {
+        setCanReopenShare(true)
+        setMessage('共有をキャンセルしました。準備したバックアップはもう一度開けます。')
+        return
+      }
+      downloadBlob(file, file.name)
+      setCanReopenShare(false)
+      setMessage('ファイルを書き出しました。ファイル App から iCloud Drive に移せます。')
+    } catch (error) {
+      if (isShareGestureError(error)) {
+        setCanReopenShare(true)
+        setMessage('準備できました。もう一度タップすると共有シートが開きます。')
+        return
+      }
+      throw error
+    }
+  }
+
+  async function onShareToICloud() {
+    setBusy(true)
+    setMessage('')
+    setCanReopenShare(false)
+    try {
+      const blob = await exportBackup()
+      const file = new File([blob], backupFilename(), { type: 'application/zip' })
+      preparedShare.current = file
+      setSettings(await ensureSettings())
+      await handOffShare(file)
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : '共有に失敗しました。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onReopenShare() {
+    const file = preparedShare.current
+    if (!file) return
+    setBusy(true)
+    setMessage('')
+    try {
+      await handOffShare(file)
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : '共有に失敗しました。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function onExport() {
     setBusy(true)
     setMessage('')
     try {
       const blob = await exportBackup()
-      downloadBlob(blob, `kioku-backup-${new Date().toISOString().slice(0, 10)}.zip`)
+      downloadBlob(blob, backupFilename())
       const s = await ensureSettings()
       setSettings(s)
       setMessage('バックアップを書き出しました。')
@@ -48,15 +114,25 @@ export function SettingsPage() {
     }
   }
 
-  async function onRestore(file: File | undefined) {
+  function clearBackupInput() {
+    if (backupInput.current) backupInput.current.value = ''
+  }
+
+  function onRestorePicked(file: File | undefined) {
     if (!file) return
-    if (
-      !confirm(
-        `バックアップ (${(file.size / 1024 / 1024).toFixed(1)} MB) を検証後、現在のデータと置き換えます。失敗時は元のデータが保持されます。続けますか？`,
-      )
-    ) {
-      return
-    }
+    setMessage('')
+    setRestoreFile(file)
+  }
+
+  function closeRestoreSheet() {
+    setRestoreFile(null)
+    clearBackupInput()
+  }
+
+  async function confirmRestore() {
+    const file = restoreFile
+    if (!file) return
+    setRestoreFile(null)
     setBusy(true)
     setMessage('')
     try {
@@ -69,7 +145,7 @@ export function SettingsPage() {
       setMessage(e instanceof Error ? e.message : '復元に失敗しました。')
     } finally {
       setBusy(false)
-      if (backupInput.current) backupInput.current.value = ''
+      clearBackupInput()
     }
   }
 
@@ -209,12 +285,34 @@ export function SettingsPage() {
           <br />
           {formatBackupDate(settings.lastBackupAt)}
         </p>
+        <p className="muted" style={{ lineHeight: 1.9 }}>
+          共有シートの「ファイルに保存」で iCloud Drive に置けます。別の端末では、その ZIP
+          を復元してください。自動では同期しません。
+        </p>
         <div className="stack">
           <button
             type="button"
             className="btn btn-primary btn-block"
             disabled={busy}
-            onClick={onExport}
+            onClick={() => void onShareToICloud()}
+          >
+            iCloudで共有
+          </button>
+          {canReopenShare && (
+            <button
+              type="button"
+              className="btn btn-block"
+              disabled={busy}
+              onClick={() => void onReopenShare()}
+            >
+              共有シートを開く
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-block"
+            disabled={busy}
+            onClick={() => void onExport()}
           >
             バックアップを書き出す
           </button>
@@ -223,7 +321,7 @@ export function SettingsPage() {
             type="file"
             accept=".zip,application/zip"
             hidden
-            onChange={(e) => void onRestore(e.target.files?.[0])}
+            onChange={(e) => onRestorePicked(e.target.files?.[0])}
           />
           <button
             type="button"
@@ -243,11 +341,28 @@ export function SettingsPage() {
           </button>
         </div>
         {message && (
-          <p className="muted" style={{ marginTop: 12 }}>
+          <p className="muted" role="status" style={{ marginTop: 12 }}>
             {message}
           </p>
         )}
       </section>
+
+      {restoreFile && (
+        <ActionSheet
+          title="バックアップから復元"
+          message={`${restoreFile.name}（${(restoreFile.size / 1024 / 1024).toFixed(1)} MB）を検証して、現在のデータと置き換えます。失敗したときは元のデータを残します。`}
+          actions={[
+            {
+              label: '置き換えて復元',
+              danger: true,
+              onClick: () => {
+                void confirmRestore()
+              },
+            },
+          ]}
+          onClose={closeRestoreSheet}
+        />
+      )}
     </div>
   )
 }
