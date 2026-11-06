@@ -2,12 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { downloadBlob, exportBackup } from '../backup/exportBackup'
 import { restoreBackup } from '../backup/importBackup'
-import {
-  backupFilename,
-  isShareGestureError,
-  shareBackupFile,
-} from '../backup/shareBackup'
+import { invalidatePreparedBackup, refreshPreparedBackup } from '../backup/preparedBackup'
+import { backupFilename } from '../backup/shareBackup'
 import { ActionSheet } from '../components/ActionSheet'
+import { CloudShareButton } from '../components/CloudShareButton'
 import { NumberStepper } from '../components/NumberStepper'
 import { clearAllData, db, ensureSettings, clampAudioVolume } from '../db/database'
 import type { AppSettings, ThemeMode } from '../db/schema'
@@ -19,10 +17,8 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const { mode, updateTheme } = useTheme()
   const backupInput = useRef<HTMLInputElement>(null)
-  const preparedShare = useRef<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  const [canReopenShare, setCanReopenShare] = useState(false)
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
 
   useEffect(() => {
@@ -41,61 +37,9 @@ export function SettingsPage() {
     setSettings((s) => (s ? { ...s, ...partial } : s))
   }
 
-  async function handOffShare(file: File) {
-    try {
-      const result = await shareBackupFile(file)
-      if (result === 'shared') {
-        setCanReopenShare(false)
-        setMessage('共有シートを開きました。ファイルに保存で iCloud Drive を選べます。')
-        return
-      }
-      if (result === 'cancelled') {
-        setCanReopenShare(true)
-        setMessage('共有をキャンセルしました。準備したバックアップはもう一度開けます。')
-        return
-      }
-      downloadBlob(file, file.name)
-      setCanReopenShare(false)
-      setMessage('ファイルを書き出しました。ファイル App から iCloud Drive に移せます。')
-    } catch (error) {
-      if (isShareGestureError(error)) {
-        setCanReopenShare(true)
-        setMessage('準備できました。もう一度タップすると共有シートが開きます。')
-        return
-      }
-      throw error
-    }
-  }
-
-  async function onShareToICloud() {
-    setBusy(true)
-    setMessage('')
-    setCanReopenShare(false)
-    try {
-      const blob = await exportBackup()
-      const file = new File([blob], backupFilename(), { type: 'application/zip' })
-      preparedShare.current = file
-      setSettings(await ensureSettings())
-      await handOffShare(file)
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : '共有に失敗しました。')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function onReopenShare() {
-    const file = preparedShare.current
-    if (!file) return
-    setBusy(true)
-    setMessage('')
-    try {
-      await handOffShare(file)
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : '共有に失敗しました。')
-    } finally {
-      setBusy(false)
-    }
+  function replacePreparedBackup() {
+    invalidatePreparedBackup()
+    refreshPreparedBackup()
   }
 
   async function onExport() {
@@ -141,6 +85,7 @@ export function SettingsPage() {
       setSettings(restored)
       await updateTheme(restored.theme)
       setMessage('復元が完了しました。')
+      replacePreparedBackup()
     } catch (e) {
       setMessage(e instanceof Error ? e.message : '復元に失敗しました。')
     } finally {
@@ -155,6 +100,7 @@ export function SettingsPage() {
     }
     await clearAllData()
     setSettings(await ensureSettings())
+    replacePreparedBackup()
     setMessage('データを削除しました。')
   }
 
@@ -286,28 +232,15 @@ export function SettingsPage() {
           {formatBackupDate(settings.lastBackupAt)}
         </p>
         <p className="muted" style={{ lineHeight: 1.9 }}>
-          共有シートの「ファイルに保存」で iCloud Drive に置けます。別の端末では、その ZIP
-          を復元してください。自動では同期しません。
+          ワンタップで共有シートが開きます。Google Drive、Dropbox、OneDrive、ファイルのどれでも選べます。
         </p>
         <div className="stack">
-          <button
-            type="button"
-            className="btn btn-primary btn-block"
+          <CloudShareButton
             disabled={busy}
-            onClick={() => void onShareToICloud()}
-          >
-            iCloudで共有
-          </button>
-          {canReopenShare && (
-            <button
-              type="button"
-              className="btn btn-block"
-              disabled={busy}
-              onClick={() => void onReopenShare()}
-            >
-              共有シートを開く
-            </button>
-          )}
+            onSaved={() => {
+              void ensureSettings().then(setSettings)
+            }}
+          />
           <button
             type="button"
             className="btn btn-block"

@@ -4,6 +4,8 @@ import { liveQuery } from 'dexie'
 import { ActionSheet } from '../components/ActionSheet'
 import { DeckTree } from '../components/DeckTree'
 import { downloadBlob } from '../backup/exportBackup'
+import { invalidatePreparedBackup, refreshPreparedBackup } from '../backup/preparedBackup'
+import { CloudShareButton } from '../components/CloudShareButton'
 import { ensureSettings, requestPersistentStorage } from '../db/database'
 import type { Deck } from '../db/schema'
 import {
@@ -97,6 +99,10 @@ export function DecksPage() {
     setDeleting(true)
     closeMenu()
     void deleteDeck(deck.id)
+      .then(() => {
+        invalidatePreparedBackup()
+        refreshPreparedBackup()
+      })
       .catch((error: unknown) => {
         console.error(error)
         setActionError('デッキを削除できませんでした。')
@@ -126,6 +132,10 @@ export function DecksPage() {
           </Link>
         </div>
       </header>
+
+      <div className="stack" style={{ marginBottom: 18 }}>
+        <CloudShareButton />
+      </div>
 
       {actionError && (
         <p className="muted" role="alert">

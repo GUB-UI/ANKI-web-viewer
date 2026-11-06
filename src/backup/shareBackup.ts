@@ -1,3 +1,4 @@
+import { downloadBlob } from './exportBackup'
 import { todayKey } from '../utils/dates'
 
 export function backupFilename(now = new Date()): string {
@@ -23,7 +24,8 @@ export function canShareBackupFile(file: File): boolean {
 
 /**
  * Opens the system share sheet with the backup file.
- * On iPhone the sheet includes 「ファイルに保存」, which can place the zip in iCloud Drive.
+ * The sheet is the one-tap handoff to whichever cloud app is installed
+ * (Drive, Dropbox, OneDrive, Files, and the rest).
  * Pass only `files`: adding text or a URL makes Safari reject the share.
  */
 export async function shareBackupFile(file: File): Promise<ShareBackupResult> {
@@ -33,6 +35,20 @@ export async function shareBackupFile(file: File): Promise<ShareBackupResult> {
     return 'shared'
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+    throw error
+  }
+}
+
+/** Hands a prepared zip to the share sheet, or downloads it when the sheet is missing. */
+export async function deliverBackupFile(file: File): Promise<{ message: string; saved: boolean }> {
+  try {
+    const result = await shareBackupFile(file)
+    if (result === 'shared') return { message: '共有シートを開きました。', saved: true }
+    if (result === 'cancelled') return { message: '共有をキャンセルしました。', saved: false }
+    downloadBlob(file, file.name)
+    return { message: 'ファイルを書き出しました。', saved: true }
+  } catch (error) {
+    if (isShareGestureError(error)) return { message: 'もう一度タップしてください。', saved: false }
     throw error
   }
 }
