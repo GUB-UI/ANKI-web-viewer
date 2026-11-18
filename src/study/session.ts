@@ -67,11 +67,13 @@ export async function applyRating(
   source: ReviewSource,
   queue: Card[],
   durationMs?: number,
-): Promise<{ updated: Card; remaining: Card[] }> {
+): Promise<{ updated: Card | null; remaining: Card[] }> {
   const updated = await answerCard(card, rating, source, durationMs)
   return {
     updated,
-    remaining: continueQueue(queue, updated, source),
+    remaining: updated
+      ? continueQueue(queue, updated, source)
+      : queue.filter((item) => item.id !== card.id),
   }
 }
 

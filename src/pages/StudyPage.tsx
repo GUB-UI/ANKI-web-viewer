@@ -87,14 +87,14 @@ export function StudyPage({ source = 'normal' as ReviewSource }) {
     if (!card || busy) return
     setBusy(true)
     try {
-      const { remaining } = await applyRating(
+      const { updated, remaining } = await applyRating(
         card,
         rating,
         source,
         queue,
         durationMs,
       )
-      setAnswered((n) => n + 1)
+      if (updated) setAnswered((n) => n + 1)
       setShowAnswer(false)
       setQueue(remaining)
     } finally {

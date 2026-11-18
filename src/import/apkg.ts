@@ -7,7 +7,6 @@ import {
 import { db } from '../db/database'
 import type { Card, Deck, Note, ReviewLog } from '../db/schema'
 import { applyFsrsDefaults, fromAnkiScheduling } from '../scheduler/fsrs'
-import { extractClozeIndices } from '../utils/cloze'
 import { createId } from '../utils/id'
 import { guessMimeType, isSupportedMedia } from '../utils/mediaRefs'
 import {
@@ -360,9 +359,7 @@ export async function importApkg(
       let back: string | undefined
 
       if (cardType === 'cloze') {
-        const text = note.fields.Text ?? note.fields[note.fieldOrder[0]!] ?? ''
-        const indices = extractClozeIndices(text)
-        clozeIndex = indices[ord] ?? ord + 1
+        clozeIndex = ord + 1
       } else if (model?.templates[ord]) {
         const tmpl = model.templates[ord]!
         front = renderAnkiTemplate(tmpl.qfmt, note.fields)

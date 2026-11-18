@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { downloadBlob, exportBackup } from '../backup/exportBackup'
 import { restoreBackup } from '../backup/importBackup'
 import {
-  backupFilename,
   isShareGestureError,
   shareBackupFile,
 } from '../backup/shareBackup'
@@ -41,22 +40,32 @@ export function SettingsPage() {
     setSettings((s) => (s ? { ...s, ...partial } : s))
   }
 
+  async function recordBackup(file: File) {
+    // A previously cancelled share can be retried after a newer backup.
+    const lastBackupAt = await db.transaction('rw', db.settings, async () => {
+      const current = await db.settings.get('settings')
+      const latest = Math.max(current?.lastBackupAt ?? 0, file.lastModified)
+      await db.settings.update('settings', { lastBackupAt: latest })
+      return latest
+    })
+    setSettings((current) => current && { ...current, lastBackupAt })
+  }
+
   async function handOffShare(file: File) {
     try {
       const result = await shareBackupFile(file)
-      if (result === 'shared') {
-        setCanReopenShare(false)
-        setMessage('共有シートを開きました。ファイルに保存で iCloud Drive を選べます。')
-        return
-      }
       if (result === 'cancelled') {
         setCanReopenShare(true)
         setMessage('共有をキャンセルしました。準備したバックアップはもう一度開けます。')
         return
       }
-      downloadBlob(file, file.name)
+      if (result === 'unavailable') downloadBlob(file, file.name)
+      await recordBackup(file)
+      preparedShare.current = null
       setCanReopenShare(false)
-      setMessage('ファイルを書き出しました。ファイル App から iCloud Drive に移せます。')
+      setMessage(result === 'shared'
+        ? 'バックアップを共有しました。'
+        : 'ファイルを書き出しました。ファイル App から iCloud Drive に移せます。')
     } catch (error) {
       if (isShareGestureError(error)) {
         setCanReopenShare(true)
@@ -72,10 +81,8 @@ export function SettingsPage() {
     setMessage('')
     setCanReopenShare(false)
     try {
-      const blob = await exportBackup()
-      const file = new File([blob], backupFilename(), { type: 'application/zip' })
+      const file = await exportBackup()
       preparedShare.current = file
-      setSettings(await ensureSettings())
       await handOffShare(file)
     } catch (e) {
       setMessage(e instanceof Error ? e.message : '共有に失敗しました。')
@@ -102,10 +109,9 @@ export function SettingsPage() {
     setBusy(true)
     setMessage('')
     try {
-      const blob = await exportBackup()
-      downloadBlob(blob, backupFilename())
-      const s = await ensureSettings()
-      setSettings(s)
+      const file = await exportBackup()
+      downloadBlob(file, file.name)
+      await recordBackup(file)
       setMessage('バックアップを書き出しました。')
     } catch (e) {
       setMessage(e instanceof Error ? e.message : '書き出しに失敗しました。')

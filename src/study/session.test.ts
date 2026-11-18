@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { applyFsrsDefaults } from '../scheduler/fsrs'
 import type { Card } from '../db/schema'
-import { continueQueue, remainingCounts } from './session'
+import { db } from '../db/database'
+import { applyRating, continueQueue, remainingCounts } from './session'
 
 function card(partial: Partial<Card>): Card {
   return {
@@ -96,6 +97,24 @@ describe('continueQueue', () => {
     const rest = [card({ id: 'r1', state: 'review', due: now })]
     expect(continueQueue(rest, learning, 'custom').map((item) => item.id)).toEqual(['r1'])
     expect(continueQueue(rest, graduated, 'normal').map((item) => item.id)).toEqual(['r1'])
+  })
+})
+
+describe('applyRating', () => {
+  it('commits only one of two concurrent answers to the same displayed card', async () => {
+    const shown = card({ id: 'two-tab-card' })
+    const other = card({ id: 'next-card' })
+    await db.cards.put(shown)
+    const queue = [shown, other]
+    const results = await Promise.all([
+      applyRating(shown, 1, 'normal', queue),
+      applyRating(shown, 3, 'normal', queue),
+    ])
+    const accepted = results.filter((result) => result.updated !== null)
+    expect(accepted).toHaveLength(1)
+    expect(results.find((result) => !result.updated)?.remaining).toEqual([other])
+    expect(await db.cards.get(shown.id)).toEqual(accepted[0].updated)
+    expect(await db.reviewLogs.where('cardId').equals(shown.id).count()).toBe(1)
   })
 })
 
