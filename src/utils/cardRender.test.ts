@@ -62,6 +62,11 @@ describe('stripRepeatedFront', () => {
     expect(stripRepeatedFront(front, back)).toBe(back)
   })
 
+  it('preserves a word or phrase that starts with the front text', () => {
+    expect(stripRepeatedFront('go', 'goes')).toBe('goes')
+    expect(stripRepeatedFront('go', 'go home')).toBe('go home')
+  })
+
   it('keeps an answer that is only the question', () => {
     const front = '<div>extent</div>'
     expect(stripRepeatedFront(front, '<div>extent</div>')).toBe('<div>extent</div>')
@@ -90,6 +95,25 @@ describe('htmlToPlainText', () => {
 })
 
 describe('renderCardContent', () => {
+  it('uses the original ordinal for sparse clozes, including existing imports', () => {
+    const note = {
+      ...makeNote(),
+      fields: { Text: '{{c2::Tokyo}} / {{c3::Osaka}}', 'Back Extra': '' },
+      fieldOrder: ['Text', 'Back Extra'],
+    }
+    const card: Card = {
+      ...makeCard('', ''), front: undefined, back: undefined,
+      cardType: 'cloze', templateOrd: 1, clozeIndex: 3,
+    }
+    const first = renderCardContent(card, note, '')
+    expect(first.frontHtml).toBe('[...] / Osaka')
+    expect(first.backHtml).toBe('<span class="cloze-answer">Tokyo</span> / Osaka')
+    note.fields['Back Extra'] = '都市名'
+    const second = renderCardContent({ ...card, templateOrd: 2 }, note, '')
+    expect(second.frontHtml).toBe('Tokyo / [...]')
+    expect(second.backHtml).toContain('<div class="extra">都市名</div>')
+  })
+
   it('shows the answer once for cards imported with FrontSide baked in', () => {
     const card = makeCard('extent', 'extent<hr id=answer>ある程度まで増える')
     const rendered = renderCardContent(card, makeNote(), '英語::ターゲット')

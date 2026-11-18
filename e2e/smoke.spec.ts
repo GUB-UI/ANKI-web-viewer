@@ -88,6 +88,29 @@ test.describe('Kioku MVP smoke', () => {
     await expect(page.getByText('復元が完了しました。')).toHaveCount(0)
   })
 
+  test('records a backup only after a cancelled share is retried successfully', async ({ page }) => {
+    await page.addInitScript(() => {
+      let attempts = 0
+      Object.defineProperty(navigator, 'canShare', { value: () => true })
+      Object.defineProperty(navigator, 'share', {
+        value: async () => {
+          if (++attempts === 1) throw new DOMException('cancel', 'AbortError')
+        },
+      })
+    })
+    await page.goto('./')
+    await page.getByRole('link', { name: '設定' }).click()
+    const timestamp = page.locator('p').filter({ hasText: '最終バックアップ' })
+    await page.getByRole('button', { name: 'iCloudで共有' }).click()
+    await expect(page.locator('p[role="status"]')).toContainText('キャンセル')
+    await expect(timestamp).toContainText('未作成')
+
+    await page.getByRole('button', { name: '共有シートを開く' }).click()
+    await expect(page.locator('p[role="status"]')).toContainText('共有しました')
+    await page.reload()
+    await expect(timestamp).toContainText(/\d{4}\/\d{2}\/\d{2}/)
+  })
+
   test('deletes a deck after confirmation and keeps it when cancelled', async ({
     page,
   }) => {

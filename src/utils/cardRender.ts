@@ -56,7 +56,14 @@ export function stripRepeatedFront(front: string, back: string): string {
   const { text, index } = squeezeWithMap(back)
   if (text.length <= question.length || !text.startsWith(question)) return back
   const cut = index[question.length - 1]! + 1
-  return back.slice(cut)
+  const rest = back.slice(cut)
+  // A matching word prefix can be part of the answer (e.g. go → goes).
+  // Keep legacy FrontSide copies recognizable by a divider or adjacent blocks.
+  const hasDivider = /^\s*(?:<br\s*\/?>\s*)*<hr\b/i.test(rest)
+  const adjacentBlocks =
+    /<\/(?:div|p|li|h[1-6])>$/i.test(question) &&
+    /^\s*<(?:div|p|li|h[1-6])\b/i.test(rest)
+  return hasDivider || adjacentBlocks ? rest : back
 }
 
 /** Anki's `<hr id=answer>` is redundant: the answer already sits below a divider. */
@@ -109,11 +116,13 @@ export function renderCardContent(
   if (card.front != null && card.back != null) {
     frontRaw = card.front
     backRaw = stripLeadingRule(stripRepeatedFront(card.front, card.back))
-  } else if (card.cardType === 'cloze' && card.clozeIndex != null) {
+  } else if (card.cardType === 'cloze') {
     const text = fieldValue(note, 'Text', 'Front', ...note.fieldOrder)
-    const extra = fieldValue(note, 'Back Extra', 'Extra')
-    frontRaw = renderClozeFront(text, card.clozeIndex)
-    backRaw = `${renderClozeBack(text, card.clozeIndex)}${extra ? `<div class="extra">${extra}</div>` : ''}`
+    // Existing imports may have stored the wrong clozeIndex for gaps in numbering.
+    const index = Number.isInteger(card.templateOrd) ? card.templateOrd + 1 : card.clozeIndex ?? 1
+    const extra = note.fields['Back Extra'] || note.fields.Extra || ''
+    frontRaw = renderClozeFront(text, index)
+    backRaw = `${renderClozeBack(text, index)}${extra ? `<div class="extra">${extra}</div>` : ''}`
   } else if (card.cardType === 'basic-reverse' || card.templateOrd === 1) {
     frontRaw = secondField(note)
     backRaw = fieldValue(note, 'Front', ...note.fieldOrder)

@@ -10,32 +10,42 @@ export async function answerCard(
   rating: RatingValue,
   source: ReviewSource,
   durationMs?: number,
-): Promise<Card> {
+): Promise<Card | null> {
   const duration = capDurationMs(durationMs)
   if (source === 'custom') {
     await recordCustomReview(card.id, card.deckId, rating, duration)
     return card
   }
 
-  const { next, scheduledDays, elapsedDays } = scheduleCard(card, rating)
-  const updated: Card = { ...card, ...next }
+  return db.transaction('rw', db.cards, db.reviewLogs, async () => {
+    const current = await db.cards.get(card.id)
+    if (
+      !current ||
+      !current.active ||
+      current.reps !== card.reps ||
+      current.lastReview !== card.lastReview ||
+      current.due !== card.due ||
+      current.state !== card.state
+    ) {
+      return null
+    }
 
-  await db.transaction('rw', db.cards, db.reviewLogs, async () => {
+    const { next, scheduledDays, elapsedDays } = scheduleCard(current, rating)
+    const updated = { ...current, ...next }
     await db.cards.put(updated)
     await db.reviewLogs.add({
       id: createId('rev'),
       cardId: card.id,
-      deckId: card.deckId,
+      deckId: current.deckId,
       reviewedAt: Date.now(),
       rating,
       source: 'normal',
       scheduledDays,
       elapsedDays,
-      stateBefore: card.state,
+      stateBefore: current.state,
       durationMs: duration,
-      intervalBefore: card.scheduledDays,
+      intervalBefore: current.scheduledDays,
     })
+    return updated
   })
-
-  return updated
 }
